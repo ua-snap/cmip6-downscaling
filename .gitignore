@@ -16,10 +16,6 @@ bilinear_*.nc
 nearest_s2d_*.nc
 conservative_*.nc
 
-# One-off diagnostic scripts and outputs not part of the pipeline
-test/plot_seward_peninsula.py
-test/seward_peninsula_pr_comparison.png
-
 # Dask runtime artifacts
 dask-worker-space/
 

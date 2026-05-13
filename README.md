@@ -27,7 +27,7 @@ conda activate cmip6-downscaling
 bash test/run_pipeline.sh /path/to/work_dir 12
 ```
 
-The test run covers the Seward Peninsula, Alaska (see [Test Suite](#test-suite)) and takes roughly 2 hours on a single workstation with 16GB of RAM.
+The test run covers the Seward Peninsula, Alaska (see [Test Suite](#test-suite)). Processing time will vary based on your system.
 
 ---
 
