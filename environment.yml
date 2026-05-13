@@ -1,0 +1,29 @@
+name: cmip6-downscaling
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - numpy
+  - pandas
+  - xarray
+  - dask
+  - zarr
+  - netcdf4
+  - h5netcdf
+  - numcodecs
+  - scipy
+  - cftime
+  - pyproj
+  - tqdm
+  - pip
+  - pip:
+    - xclim==0.47.0
+    - xesmf==0.8.4
+
+# NOTE: CDO (Climate Data Operators) is required but must be installed separately
+# from conda-forge or your system package manager:
+#   conda install -c conda-forge cdo
+# or
+#   apt-get install cdo  (Debian/Ubuntu)
+#   brew install cdo     (macOS)
