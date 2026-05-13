@@ -43,7 +43,7 @@ CMIP6 training period: 2000–2009 (historical). Future scenario: ssp370 2045–
 not raw ERA5. They are clipped to the Seward Peninsula, Alaska test domain.
 
 **Obtaining test data:** Download `data_seward_peninsula_test.zip` from the
-[latest GitHub release](https://github.com/<org>/cmip6-downscaling/releases/latest)
+[latest GitHub release](https://github.com/ua-snap/cmip6-downscaling/releases/latest)
 and unzip it here:
 
 ```bash

@@ -14,7 +14,7 @@ git clone <repo-url>
 cd cmip6-downscaling
 
 # 2. Download the test data archive from the latest GitHub release and unzip it
-#    (link: https://github.com/<org>/cmip6-downscaling/releases/latest)
+#    (link: https://github.com/ua-snap/cmip6-downscaling/releases/latest)
 cd test
 unzip data_seward_peninsula_test.zip
 cd ..
