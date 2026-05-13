@@ -32,7 +32,7 @@ No `prep_era5_variables.py`.
 
 ---
 
-## Current status: ALL FILES WRITTEN ✅, TEST DATA POPULATED ✅
+## Current status: PIPELINE TESTED END-TO-END ✅, v0.1.1 TAGGED ✅
 
 ```
 ~/cmip6-downscaling/
@@ -131,28 +131,42 @@ bias_adjust scripts:
 - `--start_year 2000 --end_year 2009` to `run_era5_netcdf_to_zarr.py`
 - `--era5_start_year 2000 --era5_end_year 2009` to `run_train_qm.py`
 
-The `run_pipeline.sh` script **has not yet been updated** with these year range
-overrides — this is a known remaining issue before the end-to-end test can pass.
+The `run_pipeline.sh` script passes these year ranges correctly. The pipeline
+ran end-to-end successfully on a t2small node (~2 hours, all 13 steps).
 
 ---
 
 ## Remaining tasks
 
-1. **Update run_pipeline.sh** to pass `--start_year 2000 --end_year 2009` (and
-   matching future year args) to the bias_adjust steps so they match the test data
-   year range.
+0. **Investigate `environment.yml` solver failure.** The `conda env create` for
+   `cmip6-downscaling` appeared to hang or fail to solve. Compare the spec against
+   the working `cmip6-utils` environment (`conda env export -n cmip6-utils`) to
+   identify conflicts. Likely culprits: `xesmf==0.8.4` and `xclim==0.47.0` installed
+   via pip while their compiled dependencies (ESMF, cf_xarray) come from conda-forge —
+   may need pinned conda-forge versions instead of pip installs, or a different Python
+   version pin. Resolve before re-running the pipeline test.
 
-2. **End-to-end test**: Run `bash test/run_pipeline.sh /tmp/cmip6_test 12` and
-   verify all steps complete without error.
+1. **Check whether CDO is actually used by the pipeline.** `cdo` is listed as a
+   required dependency in `environment.yml` and mentioned in `test/README.md`, but
+   it may have been replaced by xESMF for all regridding. Grep the pipeline scripts
+   for `cdo` calls, confirm whether it can be dropped, and update `environment.yml`
+   and the READMEs accordingly.
 
-3. **Initialize git repo**: `git init` in `~/cmip6-downscaling`, write a
-   `.gitignore` (exclude `*.zarr`, `test/data/`, `__pycache__`, `*.tmp.nc`),
-   and make an initial commit.
+2. **Create a second test domain and data for temperature variables** (`tasmax`,
+   `tasmin`, `dtr`) to exercise the DTR derivation path (steps 7–8 and 13 in
+   `run_pipeline.sh`). This path is currently skipped in the Seward Peninsula test
+   because it only contains `pr` and `snw`. Need to:
+   - Choose a second geographic clip (or reuse Seward Peninsula)
+   - Clip CMIP6 `tasmax` and `tasmin` (historical + ssp370)
+   - Clip WRF-ERA5 `t2max`, `t2min`, `dtr` for the matching period
+   - Add a second `run_pipeline.sh` (or extend the existing one) that runs the full
+     DTR → bias-adjust → difference chain
+   - Verify `tasmin = tasmax − dtr` output is produced correctly
 
-4. **Publishing decision**: The clipped test data will be zipped and made available
-   as a download archive (hosting TBD). The `.gitignore` should still exclude
-   `test/data/` from the repo. The README should point users to the download link
-   for the test data archive rather than directing them to raw ESGF/WRF-ERA5 sources.
+3. **Update all READMEs** once tasks 1 and 2 are resolved:
+   - `README.md`: update dependency list (CDO yes/no), add temperature test domain
+   - `test/README.md`: document the new temperature test, update pipeline steps table
+   - `PR_NOTES.md`: note any new known issues or run instructions for the temp test
 
 ---
 
