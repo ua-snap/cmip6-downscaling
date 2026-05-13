@@ -1,6 +1,6 @@
 # CMIP6 Statistical Downscaling
 
-Standalone pipeline for statistically downscaling daily CMIP6 climate model data to high-resolution grids using Quantile Delta Mapping (QDM) bias adjustment with ERA5 as the reference dataset.
+Standalone pipeline for statistically downscaling daily CMIP6 climate model data to high-resolution grids using Quantile Delta Mapping (QDM) bias adjustment with dynamically downscaled ERA5 as the reference dataset.
 
 This repo packages the core computation scripts from the [cmip6-utils](https://github.com/ua-snap/cmip6-utils) repository into a form that can be run sequentially on any infrastructure — no Prefect, no SLURM, no HPC required. Each script is a standalone tool; you chain them together using bash scripts, a Jupyter notebook, or any other method you prefer.
 
