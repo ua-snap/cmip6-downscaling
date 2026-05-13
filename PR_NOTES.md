@@ -32,7 +32,7 @@ Then on GitHub:
 6. Publish the release
 
 Once published, update the placeholder URLs in `README.md` and `test/README.md`:
-- Replace `https://github.com/<org>/cmip6-downscaling/releases/latest` with the real URL
+- Replace `https://github.com/ua-snap/cmip6-downscaling/releases/latest` with the real URL
 
 ---
 
