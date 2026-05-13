@@ -1,7 +1,7 @@
 # Work-in-Progress: cmip6-downscaling repo build
 
 Point Claude at this file when resuming. Say:
-> "Resume building the cmip6-downscaling repo. Read /home/jdpaul3/cmip6-downscaling/WORK_IN_PROGRESS.md for context."
+> "Resume building the cmip6-downscaling repo. Read /import/home/jdpaul3/cmip6-downscaling/WORK_IN_PROGRESS.md for context."
 
 ---
 
@@ -13,16 +13,17 @@ drawn from two source repos (read-only, do NOT edit them):
 - `~/cmip6-utils` — main branch only (use `git show main:<path>` to read files)
 - `/import/home/jdpaul3/prefect` — main branch only
 
-The new repo lives at `~/cmip6-downscaling`. It removes Prefect, SLURM, Paramiko,
-and SSH. Every SLURM launcher (`run_*.py`) becomes a simple sequential Python loop.
-No `prep_era5_variables.py`.
+The new repo lives at `/import/home/jdpaul3/cmip6-downscaling` and is published at
+`https://github.com/ua-snap/cmip6-downscaling` (tag `v0.1.1`). It removes Prefect,
+SLURM, Paramiko, and SSH. Every SLURM launcher (`run_*.py`) becomes a simple
+sequential Python loop. No `prep_era5_variables.py`.
 
 ---
 
 ## Key design decisions
 
 1. Sequential execution only — document that users can manually run parallel copies
-2. CDO is an external dependency — document in README under "Required Dependencies"
+2. CDO dependency status is **under investigation** (see task 1 in Remaining tasks)
 3. Arctic domain bounds are parameterized (CLI args with defaults)
 4. SLURM launchers rewritten as simple Python loops
 5. Test data: actual CMIP6 NetCDF files clipped to Seward Peninsula bounding box
@@ -35,46 +36,59 @@ No `prep_era5_variables.py`.
 ## Current status: PIPELINE TESTED END-TO-END ✅, v0.1.1 TAGGED ✅
 
 ```
-~/cmip6-downscaling/
-├── README.md                ✅ — includes ERA5 provenance section
-├── environment.yml          ✅
+/import/home/jdpaul3/cmip6-downscaling/
+├── README.md                ✅ — general-purpose docs, no HPC assumptions
+├── PR_NOTES.md              ✅ — HPC-specific run instructions for reviewers
+├── WORK_IN_PROGRESS.md      ✅ — this file
+├── .gitignore               ✅
+├── environment.yml          ✅ — name: cmip6-downscaling (see task 0 re solver)
 ├── config.py                ✅ — year ranges, domain bounds, var LUTs
 ├── regridding/
 │   ├── config.py            ✅ — model_sftlf_lu removed
-│   ├── generate_batch_files.py   ✅ — copied as-is
-│   ├── regrid.py            ✅ — system-specific output code removed
-│   ├── regrid_sftlf_to_target.py ✅ — copied as-is
-│   ├── make_intermediate_target_grid_file.py  ✅ — added domain CLI args
-│   ├── make_final_target_grid_file.py  ✅ — copied as-is
-│   ├── run_first_regrid.py  ✅ — NEW sequential loop
-│   └── run_cascade_regrid.py ✅ — NEW sequential loop
+│   ├── generate_batch_files.py   ✅
+│   ├── regrid.py            ✅ — rasdafy removed; NaN validation fix applied
+│   ├── regrid_sftlf_to_target.py ✅
+│   ├── make_intermediate_target_grid_file.py  ✅ — domain CLI args added
+│   ├── make_final_target_grid_file.py  ✅
+│   ├── run_first_regrid.py  ✅ — sequential loop
+│   └── run_cascade_regrid.py ✅ — sequential loop
 ├── bias_adjust/
-│   ├── config.py            ✅ — copied as-is
+│   ├── config.py            ✅
 │   ├── luts.py              ✅ — year ranges with documented defaults
-│   ├── utils.py             ✅ — copied as-is
-│   ├── netcdf_to_zarr.py    ✅ — copied as-is
-│   ├── train_qm.py          ✅ — copied as-is
-│   ├── bias_adjust.py       ✅ — copied as-is
-│   ├── run_cmip6_netcdf_to_zarr.py ✅ — sequential loop
-│   ├── run_era5_netcdf_to_zarr.py  ✅ — sequential loop
-│   ├── run_train_qm.py      ✅ — sequential loop
-│   └── run_bias_adjust.py   ✅ — sequential loop
+│   ├── utils.py             ✅
+│   ├── netcdf_to_zarr.py    ✅
+│   ├── train_qm.py          ✅
+│   ├── bias_adjust.py       ✅
+│   ├── run_cmip6_netcdf_to_zarr.py ✅
+│   ├── run_era5_netcdf_to_zarr.py  ✅
+│   ├── run_train_qm.py      ✅
+│   └── run_bias_adjust.py   ✅
 ├── derived/
-│   ├── config.py            ✅ — copied as-is
-│   ├── dtr.py               ✅ — copied as-is
-│   ├── difference.py        ✅ — copied as-is
-│   ├── run_cmip6_dtr.py     ✅ — sequential loop
-│   ├── run_era5_dtr.py      ✅ — sequential loop
-│   └── run_difference.py    ✅ — sequential loop
+│   ├── config.py            ✅
+│   ├── dtr.py               ✅
+│   ├── difference.py        ✅
+│   ├── run_cmip6_dtr.py     ✅
+│   ├── run_era5_dtr.py      ✅
+│   └── run_difference.py    ✅
 └── test/
-    ├── README.md            ✅ — updated for MIROC6 + ERA5 provenance
-    ├── run_pipeline.sh      ✅ — updated for MIROC6, pr+snw, historical+ssp370
-    ├── extent_check.png     ✅ — EPSG:3338 extent verification image
-    └── data/
-        ├── cmip6/           ✅ — MIROC6 pr+snw, clipped (see below)
-        │   └── sftlf/       ✅ — MIROC6 sftlf, clipped (see below)
-        └── wrf_era5/        ✅ — 12km pr+snow_sum 2000-2009, clipped (see below)
+    ├── README.md            ✅ — Seward Peninsula domain, known snw artifact noted
+    ├── run_pipeline.sh      ✅ — pr+snw, historical+ssp370, correct year ranges
+    ├── qc_adjusted_outputs.py ✅ — QC script; run after pipeline, saves qc_report.png
+    ├── test_area.png        ✅ — EPSG:3338 map of Seward Peninsula test domain
+    ├── data_seward_peninsula_test.zip  ✅ — test data archive (attached to GH release)
+    └── data/                   — gitignored; unzip from data_seward_peninsula_test.zip
+        ├── cmip6/             — MIROC6 pr+snw historical+ssp370, sftlf
+        └── wrf_era5/          — 12km pr+snow_sum 2000-2009
 ```
+
+### Python environment
+
+**Working env (use this until task 0 is resolved):** `cmip6-utils`
+```bash
+export PATH=/home/jdpaul3/miniconda3/envs/cmip6-utils/bin:$PATH
+export ESMFMKFILE=/home/jdpaul3/miniconda3/envs/cmip6-utils/lib/esmf.mk
+```
+Target env (`cmip6-downscaling`) creation is blocked — see task 0.
 
 ---
 
@@ -112,7 +126,7 @@ File: `cmip6/sftlf/sftlf_fx_MIROC6_historical_r1i1p1f1_gn.nc`
 - CMIP6 uses **0-360 longitude** convention; -168 to -160°W = 192 to 200° (0-360)
 - ERA5 is in **EPSG:3338** (Alaska Albers) with x/y projected coordinates
 - ERA5 y axis is **descending** (north→south); clip requires `slice(Y_MAX, Y_MIN)`
-- Python env for geo operations: `/home/jdpaul3/miniconda3/envs/cmip6-utils/bin/python`
+- Python env for geo operations: `cmip6-utils` (see "Python environment" section above)
 
 ---
 
