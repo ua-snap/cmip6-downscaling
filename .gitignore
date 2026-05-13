@@ -19,6 +19,9 @@ conservative_*.nc
 # Dask runtime artifacts
 dask-worker-space/
 
+# QC outputs (generated at runtime)
+qc_report.png
+
 # Common scratch
 .DS_Store
 *.log

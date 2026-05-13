@@ -126,6 +126,16 @@ The file `regridding/regrid.py` was 0 bytes. It was populated from the source
 `cmip6-utils` repo (`main` branch) with system-specific output-format code removed
 (a post-processing step used by a different downstream system, not needed here).
 
+### snw extreme values in bias-adjusted output (known QDM tail artifact)
+QDM extrapolates adjustment factors beyond the training range when a historical CMIP6 quantile
+has no analog in the ERA5 reference distribution. On the test run, 663 `snw` cells in the
+historical-adjusted store exceed 50,000 kg m⁻² (ERA5 max ~10,000 kg m⁻²). The monthly
+climatology and CDFs are otherwise well-behaved — this is a tail issue only.
+
+**No fix applied.** Post-processing is required: clip output to a physically defensible upper
+bound (e.g., some multiple of the ERA5 99.9th percentile) before scientific use. This is
+documented in `test/README.md` under "Known artifact."
+
 ### NaN validation false-positive on small test domains
 `regrid.py`'s `validate_file_readback()` function checks the start, middle, and end
 slices of each output file for all-NaN values. On a small test clip (4×8 CMIP6 cells

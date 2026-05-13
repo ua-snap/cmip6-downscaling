@@ -13,9 +13,26 @@ The test data covers the **Seward Peninsula, Alaska** — a small geographic reg
 | **WRF-ERA5 clip** | 62×70 grid cells at 12 km (EPSG:3338) |
 | **Model** | MIROC6 |
 | **Scenarios** | historical (2000–2009), ssp370 (2045–2054) |
-| **Variables** | `pr` (precipitation), `snw` (snow amount) |
+| **Variables** | `pr` (precipitation), `snw` (snow water equivalent) |
+
+`pr` is an atmosphere variable present on all grid cells. `snw` is a land-only variable — its
+CMIP6 output is masked to land cells using the `sftlf` (land area fraction) file. Including `snw`
+in the test exercises the land-masking code path that requires `sftlf`. Any land-only variable
+(e.g., `mrso`, `mrros`) follows the same path.
 
 This is not a scientifically meaningful domain — it is purely a functional test to verify that each pipeline step runs without error and produces non-empty output.
+
+### Known artifact: snw extreme values after bias adjustment
+
+QDM bias adjustment can produce physically implausible values in the upper tail of `snw` when the
+historical CMIP6 distribution has no analog for the highest ERA5 quantiles and the adjustment
+factor extrapolates beyond the training range. In the test run, a small number of `snw` cells
+exceed 50,000 kg m⁻² (well above the ERA5 maximum of ~10,000 kg m⁻²).
+
+This is a known limitation of quantile mapping at the distribution tails and is not specific to
+this pipeline. **Post-processing is required**: clip `snw` (and any variable prone to tail
+extrapolation) to a physically defensible upper bound before scientific use. A reasonable approach
+is to cap values at a fixed multiple of the 99.9th percentile of the reference (ERA5) distribution.
 
 ## Test data layout
 
@@ -104,6 +121,26 @@ work_dir/
 ├── trained/                    # Trained QDM model stores
 └── adjusted/                   # Bias-adjusted output stores
 ```
+
+## QC script
+
+After a successful pipeline run, assess the bias-adjusted outputs with:
+
+```bash
+python test/qc_adjusted_outputs.py /path/to/work_dir
+```
+
+This produces `{work_dir}/qc_report.png` and a printed pass/fail summary covering:
+
+| Check | What it tests |
+|-------|--------------|
+| Physical plausibility | No negative values, NaN fraction, no extreme outliers |
+| Bias reduction | Monthly climatology RMSE before vs after adjustment |
+| CDF comparison | Empirical distribution of adjusted vs ERA5 reference |
+| Spatial mean maps | Side-by-side ERA5 vs adjusted historical means |
+| Future delta sanity | ssp370 − historical mean change within plausible bounds |
+
+The script exits with status 0 if all checks pass, 1 otherwise.
 
 ## WRF-ERA5 file format
 
