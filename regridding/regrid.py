@@ -7,7 +7,6 @@ import argparse
 import logging
 import os
 import random
-import subprocess
 import sys
 import time
 import traceback
@@ -30,6 +29,18 @@ from config import variables, landsea_variables
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
 
+
+def _silence_hdf5_errors():
+    """Disable HDF5 C-library error printing (benign attribute-probe noise)."""
+    try:
+        import h5py
+        h5py._errors.silence_errors()
+    except Exception:
+        pass
+
+
+_silence_hdf5_errors()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -37,141 +48,65 @@ logging.basicConfig(
 )
 
 
-def force_filesystem_sync(file_path):
-    """Force filesystem to sync/flush data to disk.
+def validate_file_readback(file_path, var_id):
+    """Validate that a written file can be read back with valid data."""
+    if not file_path.exists():
+        raise ValueError(f"File does not exist: {file_path}")
 
-    Critical for BeeGFS and other distributed filesystems where writes
-    may not be immediately visible across nodes.
+    size_mb = file_path.stat().st_size / (1024 * 1024)
+    if size_mb < 0.5:
+        raise ValueError(f"File too small ({size_mb:.2f} MB)")
 
-    Args:
-        file_path: Path to file or directory to sync
-    """
-    try:
-        os.sync()
-    except Exception as e:
-        logging.warning(f"os.sync() failed: {e}")
+    with xr.open_dataset(file_path) as ds:
+        if var_id not in ds.data_vars:
+            raise ValueError(f"Variable '{var_id}' not found")
 
-    # Force metadata refresh by listing directory
-    try:
-        if file_path.is_file():
-            parent = file_path.parent
-        else:
-            parent = file_path
-        subprocess.run(
-            ["ls", "-la", str(parent)],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception as e:
-        logging.warning(f"Directory listing for cache refresh failed: {e}")
+        arr = ds[var_id]
+        if arr.size == 0:
+            raise ValueError(f"Variable '{var_id}' is empty")
 
+        samples_to_check = [
+            (
+                "start",
+                {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims},
+            ),
+            (
+                "middle",
+                {
+                    dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
+                    for dim in arr.dims
+                },
+            ),
+            (
+                "end",
+                {
+                    dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
+                    for dim in arr.dims
+                },
+            ),
+        ]
 
-def validate_file_readback(file_path, var_id, max_retries=10, retry_delay=5):
-    """Validate that a written file can be read back with valid data.
+        all_nan_count = 0
 
-    Retries multiple times to handle filesystem cache coherency delays.
-    This is critical for multi-node jobs on distributed filesystems.
+        for location, selection in samples_to_check:
+            sample = arr.isel(selection)
+            sample_data = sample.compute()
 
-    Args:
-        file_path: Path to file to validate
-        var_id: Variable ID to check
-        max_retries: Maximum number of read attempts
-        retry_delay: Seconds between retry attempts
+            if sample_data.size == 0:
+                raise ValueError(f"Sample data at {location} is empty")
 
-    Returns:
-        True if validation succeeds
+            if sample_data.isnull().all():
+                all_nan_count += 1
 
-    Raises:
-        ValueError: If file cannot be validated after retries
-    """
-    for attempt in range(1, max_retries + 1):
-        try:
-            # Force sync before attempting read
-            force_filesystem_sync(file_path)
+        # Positional samples can all land in the NaN surround when input data
+        # covers only a small sub-region of the output grid (e.g. test clips).
+        # Only warn/fail if a global check also finds no valid data.
+        if all_nan_count == len(samples_to_check):
+            global_min = float(arr.min().compute())
+            if np.isnan(global_min):
+                raise ValueError("All samples (start, middle, end) are all NaN")
 
-            if not file_path.exists():
-                raise ValueError(f"File does not exist: {file_path}")
-
-            # Check file size
-            size_mb = file_path.stat().st_size / (1024 * 1024)
-            if size_mb < 0.5:
-                raise ValueError(f"File too small ({size_mb:.2f} MB)")
-
-            # Try to open and read sample data
-            with xr.open_dataset(file_path) as ds:
-                if var_id not in ds.data_vars:
-                    raise ValueError(f"Variable '{var_id}' not found")
-
-                arr = ds[var_id]
-                if arr.size == 0:
-                    raise ValueError(f"Variable '{var_id}' is empty")
-
-                # Check multiple samples (beginning, middle, end) to catch issues
-                # with boundary regions or filesystem cache coherency
-                samples_to_check = [
-                    (
-                        "start",
-                        {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims},
-                    ),
-                    (
-                        "middle",
-                        {
-                            dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 10)
-                            for dim in arr.dims
-                        },
-                    ),
-                    (
-                        "end",
-                        {
-                            dim: slice(max(0, arr.sizes[dim] - 10), arr.sizes[dim])
-                            for dim in arr.dims
-                        },
-                    ),
-                ]
-
-                all_nan_count = 0
-
-                for location, selection in samples_to_check:
-                    sample = arr.isel(selection)
-                    sample_data = sample.compute()
-
-                    if sample_data.size == 0:
-                        raise ValueError(f"Sample data at {location} is empty")
-
-                    if sample_data.isnull().all():
-                        all_nan_count += 1
-                        logging.warning(
-                            f"  WARNING: {location} sample is all NaN in {file_path.name}"
-                        )
-
-                # If all positional samples are NaN, do a global check before failing.
-                # Positional samples can all land in the NaN surround when input data
-                # covers only a small sub-region of the output grid (e.g. test clips).
-                if all_nan_count == len(samples_to_check):
-                    global_min = float(arr.min().compute())
-                    if np.isnan(global_min):
-                        raise ValueError("All samples (start, middle, end) are all NaN")
-
-            # Success!
-            return True
-
-        except Exception as e:
-            if attempt < max_retries:
-                logging.warning(
-                    f"  Read-back attempt {attempt}/{max_retries} failed for {file_path.name}: {e}"
-                )
-                logging.warning(f"  Retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-                # Increase delay for next attempt (exponential backoff)
-                retry_delay = min(retry_delay * 1.5, 30)
-            else:
-                raise ValueError(
-                    f"Failed to validate {file_path.name} after {max_retries} attempts. "
-                    f"Last error: {e}"
-                )
-
-    return False
+    return True
 
 
 def is_transient_error(error):
@@ -191,7 +126,7 @@ def is_transient_error(error):
         "memory",
         "timeout",
         "connection",
-        "no such file",  # Filesystem visibility issues
+        "no such file",
         "file not found",
         "filesystem",
         "i/o error",
@@ -202,7 +137,7 @@ def is_transient_error(error):
 def configure_dask_for_regridding(
     n_workers=4, threads_per_worker=4, memory_limit="28GB"
 ):
-    """Configure Dask LocalCluster optimized for regridding on 128GB nodes.
+    """Configure Dask LocalCluster for regridding.
 
     Regridding is memory-intensive (large spatial grids) and compute-bound (interpolation).
 
@@ -249,11 +184,11 @@ def configure_dask_for_regridding(
     )
 
     client = Client(cluster)
+    client.run(_silence_hdf5_errors)
 
     logging.info(f"Dask cluster configured for regridding:")
     logging.info(f"  Workers: {n_workers}, Threads/worker: {threads_per_worker}")
     logging.info(f"  Memory per worker: {memory_limit}")
-    logging.info(f"  Total memory: {n_workers * 28} GB (out of ~128 GB available)")
 
     return client
 
@@ -989,10 +924,6 @@ def write_regridded_files(out_ds, out_fp):
         # Use mode='w' to force overwrite and prevent file corruption from concurrent writes
         year_ds.to_netcdf(year_out_fp, mode="w", compute=True)
 
-        # CRITICAL: Force filesystem sync after write
-        # This ensures data is visible across nodes in distributed filesystems like BeeGFS
-        force_filesystem_sync(year_out_fp)
-
         out_fps.append(year_out_fp)
 
     logging.info(f"  ✓ Completed writing {len(out_fps)} files")
@@ -1003,10 +934,6 @@ def write_regridded_files(out_ds, out_fp):
             f"  ℹ Skipped {len(skipped_years)} years before 1950 (years {year_range})"
         )
 
-    # Final sync of parent directory
-    if out_fps:
-        force_filesystem_sync(out_fps[0].parent)
-
     [print(f"{fp} done") for fp in out_fps]
 
     # Return both the base filepath and the list of actually written files, plus skipped years info
@@ -1015,8 +942,6 @@ def write_regridded_files(out_ds, out_fp):
 
 def validate_regridded_output(out_fps, var_id):
     """Validate that regridded output files exist and contain valid data.
-
-    Uses read-back validation with retries to handle filesystem cache coherency issues.
 
     Args:
         out_fps: List of output file paths
@@ -1031,10 +956,8 @@ def validate_regridded_output(out_fps, var_id):
     logging.info(f"  Validating {len(out_fps)} output files with read-back test...")
 
     for out_fp in out_fps:
-        # Use robust read-back validation with retries
-        validate_file_readback(out_fp, var_id, max_retries=10, retry_delay=5)
+        validate_file_readback(out_fp, var_id)
 
-        # Log success with file size
         size_mb = out_fp.stat().st_size / (1024 * 1024)
         logging.info(f"  ✓ Validated: {out_fp.name} ({size_mb:.2f} MB)")
 

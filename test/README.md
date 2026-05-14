@@ -13,12 +13,16 @@ The test data covers the **Seward Peninsula, Alaska** — a small geographic reg
 | **WRF-ERA5 clip** | 62×70 grid cells at 12 km (EPSG:3338) |
 | **Model** | MIROC6 |
 | **Scenarios** | historical (2000–2009), ssp370 (2045–2054) |
-| **Variables** | `pr` (precipitation), `snw` (snow water equivalent) |
+| **Variables** | `pr`, `snw`, `tasmax`, `tasmin` (→ `dtr`) |
 
 `pr` is an atmosphere variable present on all grid cells. `snw` is a land-only variable — its
 CMIP6 output is masked to land cells using the `sftlf` (land area fraction) file. Including `snw`
 in the test exercises the land-masking code path that requires `sftlf`. Any land-only variable
 (e.g., `mrso`, `mrros`) follows the same path.
+
+`tasmax` and `tasmin` exercise the DTR derivation path: DTR = tasmax − tasmin is computed after
+regridding (step 7), ERA5 DTR is computed from t2max/t2min (step 8), and bias-adjusted `tasmin`
+is re-derived as adjusted tasmax − adjusted dtr (step 13).
 
 This is not a scientifically meaningful domain — it is purely a functional test to verify that each pipeline step runs without error and produces non-empty output.
 
@@ -41,17 +45,25 @@ test/data/
 ├── cmip6/
 │   ├── CMIP/MIROC/MIROC6/historical/r1i1p1f1/day/
 │   │   ├── pr/gn/v20191016/pr_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
-│   │   └── snw/gn/v20191016/snw_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   ├── snw/gn/v20191016/snw_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   ├── tasmax/gn/v20191016/tasmax_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   └── tasmin/gn/v20191016/tasmin_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
 │   ├── ScenarioMIP/MIROC/MIROC6/ssp370/r1i1p1f1/day/
 │   │   ├── pr/gn/v20191016/pr_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
-│   │   └── snw/gn/v20191016/snw_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   ├── snw/gn/v20191016/snw_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   ├── tasmax/gn/v20191016/tasmax_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   └── tasmin/gn/v20191016/tasmin_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
 │   └── sftlf/
 │       └── sftlf_fx_MIROC6_historical_r1i1p1f1_gn.nc
 └── wrf_era5/
     ├── pr/
     │   └── pr_{2000..2009}_daily_era5_12km_3338.nc
-    └── snow_sum/
-        └── snow_sum_{2000..2009}_daily_era5_12km_3338.nc
+    ├── snow_sum/
+    │   └── snow_sum_{2000..2009}_daily_era5_12km_3338.nc
+    ├── t2max/
+    │   └── t2max_{2000..2009}_daily_era5_12km_3338.nc
+    └── t2min/
+        └── t2min_{2000..2009}_daily_era5_12km_3338.nc
 ```
 
 CMIP6 training period: 2000–2009 (historical). Future scenario: ssp370 2045–2054.
@@ -70,11 +82,6 @@ unzip data_seward_peninsula_test.zip
 
 This produces the `test/data/` directory with the layout shown above.
 Do not commit `test/data/` to the repo — it is covered by `.gitignore`.
-
-## Required dependencies (beyond the conda environment)
-
-- CDO: used by `regrid.py` for bilinear/conservative interpolation.
-  Install: `conda install -c conda-forge cdo`
 
 ## Running the full pipeline on test data
 
@@ -97,13 +104,14 @@ Arguments:
 | 4 | `regridding/run_first_regrid.py` | Regrid CMIP6 → intermediate grid |
 | 5 | `regridding/run_cascade_regrid.py` | Regrid intermediate → ERA5 target |
 | 6 | `regridding/make_final_target_grid_file.py` | Extract ERA5 slice as final target grid |
-| 7 | `derived/run_cmip6_dtr.py` | Compute CMIP6 DTR (if needed) |
-| 8 | `derived/run_era5_dtr.py` | Compute ERA5 DTR (if needed) |
-| 9 | `bias_adjust/run_cmip6_netcdf_to_zarr.py` | Convert regridded CMIP6 → Zarr |
-| 10 | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 → Zarr |
+| 7 | `derived/run_cmip6_dtr.py` | Compute CMIP6 DTR from regridded tasmax/tasmin |
+| 8 | `derived/run_era5_dtr.py` | Compute ERA5 DTR from t2max/t2min |
+| 9 | `bias_adjust/run_cmip6_netcdf_to_zarr.py` | Convert regridded CMIP6 → Zarr (pr, snw, tasmax, dtr) |
+| 10a | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 base vars → Zarr (pr, snow_sum, t2max) |
+| 10b | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 DTR → Zarr |
 | 11 | `bias_adjust/run_train_qm.py` | Train QDM bias adjustment models |
 | 12 | `bias_adjust/run_bias_adjust.py` | Apply bias adjustment |
-| 13 | `derived/run_difference.py` | Derive tasmin = tasmax − dtr (if needed) |
+| 13 | `derived/run_difference.py` | Derive tasmin = adjusted tasmax − adjusted dtr |
 
 ## Expected outputs
 

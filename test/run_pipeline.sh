@@ -6,6 +6,14 @@
 
 set -euo pipefail
 
+# Filter out HDF5 C-library diagnostic noise (benign attribute-probe messages
+# printed directly to fd-2 by libhdf5; not suppressible from Python).
+# Multi-threaded interleaving garbles the lines, so match substrings rather
+# than anchored prefixes.  Patterns cover:
+#   HDF5-DIAG headers, H5VL/H5O/H5A stack-frame lines, major:/minor: class
+#   lines, isolated ":" and "thread N" artifacts from interleaved writes.
+exec 2> >(grep -Ev "HDF5|H5VL|H5O__|H5A__|#[0-9]{3}:|major:|minor:|QuantizeBit|^thread [0-9]|^:$" >&2)
+
 WORK_DIR="${1:?Usage: $0 <work_dir> [resolution]}"
 RESOLUTION="${2:-12}"
 
@@ -23,8 +31,19 @@ DERIVED="$REPO_ROOT/derived"
 # Pipeline parameters
 MODEL="MIROC6"
 SCENARIOS="historical ssp370"
-VARIABLES="pr snw"
-ERA5_VARS="pr snow_sum"
+
+# REGRID_VARS: everything that needs to go through the cascade regridder.
+# tasmin is included so DTR = tasmax - tasmin can be computed after regridding
+# (step 7), but tasmin is NOT bias-adjusted directly.
+REGRID_VARS="pr snw tasmax tasmin"
+
+# ADJUST_VARS: variables that get zarr-converted, QDM-trained, and bias-adjusted.
+# tasmin is excluded — it is derived as adjusted_tasmax - adjusted_dtr (step 13).
+ADJUST_VARS="pr snw tasmax dtr"
+
+# ERA5_BASE_VARS: ERA5 variables in test/data/wrf_era5/ to zarr-convert.
+# ERA5 dtr is computed by step 8 and zarr-converted separately in step 10b.
+ERA5_BASE_VARS="pr snow_sum t2max"
 
 # Year ranges — test data covers 2000-2009 (ERA5/historical) and 2045-2054 (ssp370)
 # Production defaults are ERA5 1965-2014, future 2015-2100
@@ -65,7 +84,7 @@ mkdir -p "$WORK_DIR/regrid_batch"
 python "$REGRIDDING/generate_batch_files.py" \
     --cmip6_directory "$CMIP6_DIR" \
     --regrid_batch_dir "$WORK_DIR/regrid_batch" \
-    --vars "$VARIABLES" \
+    --vars "$REGRID_VARS" \
     --freqs "day" \
     --models "$MODEL" \
     --scenarios "$SCENARIOS"
@@ -105,24 +124,25 @@ python "$REGRIDDING/run_cascade_regrid.py" \
     --interp_method bilinear \
     --sftlf_dir "$WORK_DIR"
 
-# ── Step 7: Compute CMIP6 DTR (skip if not needed) ────────────────────────
-# Uncomment if tasmax and tasmin are available:
-# echo "[7/13] Computing CMIP6 DTR..."
-# python "$DERIVED/run_cmip6_dtr.py" \
-#     --input_dir "$WORK_DIR/second_regrid" \
-#     --output_dir "$WORK_DIR/second_regrid" \
-#     --models "$MODEL" \
-#     --scenarios "$SCENARIOS"
-echo "[7/13] Skipping CMIP6 DTR (pr+snw test data, no temperature variables)"
+# ── Step 7: Compute CMIP6 DTR ─────────────────────────────────────────────
+# Input: regridded tasmax + tasmin in second_regrid. Output written to
+# second_regrid/{model}/{scenario}/day/dtr/ alongside the other regridded vars.
+echo "[7/13] Computing CMIP6 DTR..."
+python "$DERIVED/run_cmip6_dtr.py" \
+    --input_dir "$WORK_DIR/second_regrid" \
+    --output_dir "$WORK_DIR/second_regrid" \
+    --models "$MODEL" \
+    --scenarios "$SCENARIOS"
 
 # ── Step 8: Compute ERA5 DTR ───────────────────────────────────────────────
-# Uncomment if t2max and t2min ERA5 files are available:
-# echo "[8/13] Computing ERA5 DTR..."
-# python "$DERIVED/run_era5_dtr.py" \
-#     --era5_dir "$ERA5_DIR" \
-#     --output_dir "$WORK_DIR/era5_dtr" \
-#     --resolution "$RESOLUTION"
-echo "[8/13] Skipping ERA5 DTR (pr+snw test data, no temperature variables)"
+# Output goes to era5_dtr/dtr/ so that run_era5_netcdf_to_zarr.py can find
+# files at the expected path: <netcdf_dir>/<var_id>/<var_id>_<year>*.nc
+echo "[8/13] Computing ERA5 DTR..."
+mkdir -p "$WORK_DIR/era5_dtr/dtr"
+python "$DERIVED/run_era5_dtr.py" \
+    --era5_dir "$ERA5_DIR" \
+    --output_dir "$WORK_DIR/era5_dtr/dtr" \
+    --resolution "$RESOLUTION"
 
 # ── Step 9: Convert regridded CMIP6 → Zarr ────────────────────────────────
 echo "[9/13] Converting regridded CMIP6 NetCDF → Zarr..."
@@ -132,19 +152,29 @@ python "$BIAS_ADJUST/run_cmip6_netcdf_to_zarr.py" \
     --output_dir "$WORK_DIR/cmip6_zarr" \
     --models "$MODEL" \
     --scenarios "$SCENARIOS" \
-    --variables "$VARIABLES" \
+    --variables "$ADJUST_VARS" \
     --era5_start_year "$ERA5_START_YEAR" \
     --era5_end_year "$ERA5_END_YEAR" \
     --future_start_year "$FUTURE_START_YEAR" \
     --future_end_year "$FUTURE_END_YEAR"
 
-# ── Step 10: Convert ERA5 → Zarr ──────────────────────────────────────────
-echo "[10/13] Converting ERA5 NetCDF → Zarr..."
+# ── Step 10a: Convert ERA5 base vars → Zarr ───────────────────────────────
+echo "[10a/13] Converting ERA5 base vars (pr, snow_sum, t2max) → Zarr..."
 mkdir -p "$WORK_DIR/era5_zarr"
 python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
     --netcdf_dir "$ERA5_DIR" \
     --output_dir "$WORK_DIR/era5_zarr" \
-    --variables "$ERA5_VARS" \
+    --variables "$ERA5_BASE_VARS" \
+    --resolution "$RESOLUTION" \
+    --start_year "$ERA5_START_YEAR" \
+    --end_year "$ERA5_END_YEAR"
+
+# ── Step 10b: Convert ERA5 DTR → Zarr ─────────────────────────────────────
+echo "[10b/13] Converting ERA5 DTR → Zarr..."
+python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
+    --netcdf_dir "$WORK_DIR/era5_dtr" \
+    --output_dir "$WORK_DIR/era5_zarr" \
+    --variables "dtr" \
     --resolution "$RESOLUTION" \
     --start_year "$ERA5_START_YEAR" \
     --end_year "$ERA5_END_YEAR"
@@ -158,7 +188,7 @@ python "$BIAS_ADJUST/run_train_qm.py" \
     --output_dir "$WORK_DIR/trained" \
     --tmp_dir "$WORK_DIR/dask_tmp" \
     --models "$MODEL" \
-    --variables "$VARIABLES"
+    --variables "$ADJUST_VARS"
 
 # ── Step 12: Apply bias adjustment ────────────────────────────────────────
 echo "[12/13] Applying bias adjustment..."
@@ -170,20 +200,19 @@ python "$BIAS_ADJUST/run_bias_adjust.py" \
     --tmp_dir "$WORK_DIR/dask_tmp" \
     --models "$MODEL" \
     --scenarios "$SCENARIOS" \
-    --variables "$VARIABLES"
+    --variables "$ADJUST_VARS"
 
-# ── Step 13: Derive tasmin (skip — tasmin not in test variables) ───────────
-echo "[13/13] Skipping tasmin derivation (not in test variables)"
-# To derive tasmin from tasmax - dtr:
-# python "$DERIVED/run_difference.py" \
-#     --input_dir "$WORK_DIR/adjusted" \
-#     --output_dir "$WORK_DIR/adjusted" \
-#     --minuend_tmp_fn "tasmax_{model}_{scenario}_adjusted.zarr" \
-#     --subtrahend_tmp_fn "dtr_{model}_{scenario}_adjusted.zarr" \
-#     --out_tmp_fn "tasmin_{model}_{scenario}_adjusted.zarr" \
-#     --new_var_id tasmin \
-#     --models "$MODEL" \
-#     --scenarios "$SCENARIOS"
+# ── Step 13: Derive tasmin = adjusted tasmax − adjusted dtr ───────────────
+echo "[13/13] Deriving tasmin from adjusted tasmax − dtr..."
+python "$DERIVED/run_difference.py" \
+    --input_dir "$WORK_DIR/adjusted" \
+    --output_dir "$WORK_DIR/adjusted" \
+    --minuend_tmp_fn "tasmax_{model}_{scenario}_adjusted.zarr" \
+    --subtrahend_tmp_fn "dtr_{model}_{scenario}_adjusted.zarr" \
+    --out_tmp_fn "tasmin_{model}_{scenario}_adjusted.zarr" \
+    --new_var_id tasmin \
+    --models "$MODEL" \
+    --scenarios "$SCENARIOS"
 
 echo ""
 echo "========================================"

@@ -5,8 +5,10 @@
 Clone the repo and create a conda environment from `~cmip6-downscaling/environment.yml`
 
 ```bash
-conda env create -f ~/cmip6-downscaling/environment.yml
+conda env create -f ~/cmip6-downscaling/environment.yml --solver=libmamba
 ```
+
+Note: `--solver=libmamba` is required — the default solver hangs on this dependency set.
 
 ## Download test data 
 
@@ -36,7 +38,7 @@ Depending on available compute resources, this should take 1-2 hours.
 python test/qc_adjusted_outputs.py ~jdpaul3/cmip6_test_run
 ```
 
-This will produce a `qc_report.png` image in the test folder.
+This will produce one PNG per variable in `<work_dir>/qc/` (e.g. `qc/pr.png`, `qc/snw.png`, `qc/tasmax.png`, `qc/dtr.png`, `qc/tasmin.png`). Each image shows ERA5 and CMIP6 climatology/CDFs, spatial maps of raw and adjusted output, and a delta map comparing historical to future.
 
 ## Known issues:
 
@@ -73,6 +75,8 @@ The test data was clipped from full-domain production files:
 | CMIP6 MIROC6 | `/import/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MIROC/MIROC6/` |
 | WRF-ERA5 pr | `/import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/for_downscaling/pr/` |
 | WRF-ERA5 snow_sum | `/import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/snow_sum/` |
+| WRF-ERA5 t2max | `/import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/t2_max/` |
+| WRF-ERA5 t2min | `/import/beegfs/CMIP6/jdpaul3/wrf_era5_12km_daily/t2_min/` |
 | sftlf | `/import/beegfs/CMIP6/arctic-cmip6/CMIP6/CMIP/MIROC/MIROC6/historical/r1i1p1f1/fx/sftlf/` |
 
 Clip bounds used for the test data:
@@ -86,8 +90,8 @@ Clip bounds used for the test data:
 After the run, key output paths under `<work_dir>/`:
 
 ```
-first_regrid/MIROC6/{historical,ssp370}/day/{pr,snw}/   # intermediate regrid
-second_regrid/MIROC6/{historical,ssp370}/day/{pr,snw}/  # cascade regrid (final grid)
+first_regrid/MIROC6/{historical,ssp370}/day/{pr,snw,tasmax,tasmin}/   # intermediate regrid
+second_regrid/MIROC6/{historical,ssp370}/day/{pr,snw,tasmax,tasmin,dtr}/  # cascade + DTR
 cmip6_zarr/                                              # CMIP6 Zarr stores
 era5_zarr/                                               # WRF-ERA5 Zarr stores
 trained/                                                 # trained QDM weights

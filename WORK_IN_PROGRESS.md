@@ -33,7 +33,7 @@ sequential Python loop. No `prep_era5_variables.py`.
 
 ---
 
-## Current status: PIPELINE TESTED END-TO-END ✅, v0.1.1 TAGGED ✅
+## Current status: TEMPERATURE PATH VALIDATED — READY FOR README + GITHUB RELEASE (2026-05-14)
 
 ```
 /import/home/jdpaul3/cmip6-downscaling/
@@ -83,12 +83,9 @@ sequential Python loop. No `prep_era5_variables.py`.
 
 ### Python environment
 
-**Working env (use this until task 0 is resolved):** `cmip6-utils`
-```bash
-export PATH=/home/jdpaul3/miniconda3/envs/cmip6-utils/bin:$PATH
-export ESMFMKFILE=/home/jdpaul3/miniconda3/envs/cmip6-utils/lib/esmf.mk
-```
-Target env (`cmip6-downscaling`) creation is blocked — see task 0.
+**Active env: `cmip6-downscaling`** (confirmed working as of 2026-05-14).
+Key pins required: `esmf=*=nompi*`, `esmpy=*=nompi*`, `importlib_metadata<5`.
+Use `conda env create -f environment.yml --solver=libmamba`.
 
 ---
 
@@ -152,35 +149,43 @@ ran end-to-end successfully on a t2small node (~2 hours, all 13 steps).
 
 ## Remaining tasks
 
-0. **Investigate `environment.yml` solver failure.** The `conda env create` for
-   `cmip6-downscaling` appeared to hang or fail to solve. Compare the spec against
-   the working `cmip6-utils` environment (`conda env export -n cmip6-utils`) to
-   identify conflicts. Likely culprits: `xesmf==0.8.4` and `xclim==0.47.0` installed
-   via pip while their compiled dependencies (ESMF, cf_xarray) come from conda-forge —
-   may need pinned conda-forge versions instead of pip installs, or a different Python
-   version pin. Resolve before re-running the pipeline test.
+0. ✅ **`environment.yml` confirmed working.** `cmip6-downscaling` env created successfully.
+   Key pins: `esmf=*=nompi*`, `esmpy=*=nompi*`, `importlib_metadata<5`.
 
-1. **Check whether CDO is actually used by the pipeline.** `cdo` is listed as a
-   required dependency in `environment.yml` and mentioned in `test/README.md`, but
-   it may have been replaced by xESMF for all regridding. Grep the pipeline scripts
-   for `cdo` calls, confirm whether it can be dropped, and update `environment.yml`
-   and the READMEs accordingly.
+1. ✅ **CDO confirmed unused and removed.**
 
-2. **Create a second test domain and data for temperature variables** (`tasmax`,
-   `tasmin`, `dtr`) to exercise the DTR derivation path (steps 7–8 and 13 in
-   `run_pipeline.sh`). This path is currently skipped in the Seward Peninsula test
-   because it only contains `pr` and `snw`. Need to:
-   - Choose a second geographic clip (or reuse Seward Peninsula)
-   - Clip CMIP6 `tasmax` and `tasmin` (historical + ssp370)
-   - Clip WRF-ERA5 `t2max`, `t2min`, `dtr` for the matching period
-   - Add a second `run_pipeline.sh` (or extend the existing one) that runs the full
-     DTR → bias-adjust → difference chain
-   - Verify `tasmin = tasmax − dtr` output is produced correctly
+2. ✅ **Full temperature-path pipeline run completed (2026-05-14).** All 13 steps
+   confirmed working for pr, snw, tasmax, tasmin, dtr. QC images generated for all
+   5 variables in `qc/`. Bugs fixed this session:
+   - `run_cmip6_dtr.py`: `get_tmax_tmin_fps_cmip6` was reading text batch files instead
+     of globbing the actual second_regrid directory — replaced with `rglob`.
+   - `dtr.py`: stale `max_retries` kwarg in `validate_file_readback` call — removed.
+   - `train_qm.py`: zarr write failed on coordinate chunk encoding mismatch — encoding
+     dict now covers coords as well as data vars, with `"chunks": None`.
+   - `bias_adjust.py`: xclim All-NaN RuntimeWarning filtered (expected for masked cells).
+   - All 6 scripts: false-positive start/middle/end NaN warnings removed (now only
+     fail if global min is also NaN).
+   - `regridding/regrid.py`, `bias_adjust/netcdf_to_zarr.py`: HDF5 C-library noise
+     suppressed via `h5py._errors.silence_errors()` + `exec 2> grep` filter in pipeline.
 
-3. **Update all READMEs** once tasks 1 and 2 are resolved:
-   - `README.md`: update dependency list (CDO yes/no), add temperature test domain
-   - `test/README.md`: document the new temperature test, update pipeline steps table
-   - `PR_NOTES.md`: note any new known issues or run instructions for the temp test
+3. ✅ **READMEs updated** (CDO removed, temperature variables added, data layout updated).
+
+4. **Add methodology section to README.md.**
+   - Port content from https://github.com/ua-snap/cmip6-utils/blob/main/downscaling/README.md
+     (the upstream source repo's method description).
+   - Explain algorithm parameters that aren't obvious:
+     - Jitter values (what they are, why they're applied, which variables)
+     - Squeezing of `pr` and `dtr` (clipping to physical bounds, why)
+     - `tasmin` floor at 203.15 K in `difference.py`
+     - QDM training period (ERA5 reference years) and why it matters
+     - Cascade regridding rationale (why two steps instead of one)
+     - Land/sea masking with sftlf
+   - This should be a "Methodology" section sitting between the current
+     "Pipeline overview" and "Running the pipeline" sections.
+
+5. ✅ **Test data zip repackaged** (2026-05-14). New `test/data_seward_peninsula_test.zip`
+   (177 MB) includes t2max/t2min ERA5 dirs and tasmax/tasmin CMIP6 dirs.
+   **Still needed**: upload to GitHub release to replace the old asset.
 
 ---
 

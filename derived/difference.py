@@ -1,13 +1,13 @@
 """Script for computing the difference between two variables and saving it as a new variable.
-This will be used primarily for computing daily temperature range (dtr) from tmax and tmin data, 
+This will be used primarily for computing daily temperature range (dtr) from tmax and tmin data,
 and for computing tasmin from tmax and dtr data.
-This script is designed to work with zarr stores as inputs. 
+This script is designed to work with zarr stores as inputs.
 
 Example usage:
     python difference.py \
-        --minuend_store /center1/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted/tasmax_GFDL-ESM4_historical_adjusted.zarr \
-        --subtrahend_store /center1/CMIP6/kmredilla/cmip6_4km_downscaling/adjusted/dtr_GFDL-ESM4_historical_adjusted.zarr \
-        --output_store /center1/CMIP6/kmredilla/cmip6_4km_downscaling/derived/tasmin/tasmin_GFDL-ESM4_historical_adjusted.zarr \
+        --minuend_store /path/to/adjusted/tasmax_MIROC6_historical_adjusted.zarr \
+        --subtrahend_store /path/to/adjusted/dtr_MIROC6_historical_adjusted.zarr \
+        --output_store /path/to/derived/tasmin_MIROC6_historical_adjusted.zarr \
         --new_var_id tasmin
 """
 
@@ -15,9 +15,7 @@ import argparse
 import logging
 import os
 import shutil
-import subprocess
 import sys
-import time
 from pathlib import Path
 import numpy as np
 import xarray as xr
@@ -38,7 +36,7 @@ logging.basicConfig(
 def configure_dask_for_difference(
     n_workers=4, threads_per_worker=4, memory_limit="28GB"
 ):
-    """Configure Dask LocalCluster optimized for difference calculations on 128GB nodes.
+    """Configure Dask LocalCluster for difference calculations.
 
     Difference calculation is simple (subtraction) but needs careful memory management
     for large zarr stores.
@@ -92,230 +90,74 @@ def configure_dask_for_difference(
     return client
 
 
-def force_filesystem_cache_refresh(zarr_path, max_attempts=10, delay=10):
-    """Aggressively force beegfs to refresh its cache for a zarr store.
-
-    This is critical for multi-node jobs where the writer and reader are on different nodes.
-
-    Args:
-        zarr_path: Path to zarr store
-        max_attempts: Number of attempts to verify chunks are visible
-        delay: Seconds between attempts
-    """
-    logging.info(f"Forcing filesystem cache refresh for {zarr_path}...")
-
-    for attempt in range(1, max_attempts + 1):
-        try:
-            # Force kernel to flush anything pending
-            try:
-                os.sync()
-            except:
-                pass
-
-            # List all chunk files to force metadata + inode cache refresh
-            # Zarr chunks are named like "0.0.0", "1.2.3", etc.
-            result = subprocess.run(
-                ["find", str(zarr_path), "-type", "f", "-name", "*.*.*"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-
-            chunk_files = [
-                line
-                for line in result.stdout.strip().split("\n")
-                if line
-                and not line.endswith(".zarray")
-                and not line.endswith(".zattrs")
-            ]
-            logging.info(f"  Attempt {attempt}: Found {len(chunk_files)} chunk files")
-
-            if len(chunk_files) > 0:
-                # Try to actually read a few bytes from chunk files
-                import random
-
-                sample_files = random.sample(chunk_files, min(5, len(chunk_files)))
-                for chunk_file in sample_files:
-                    try:
-                        with open(chunk_file, "rb") as f:
-                            data = f.read(1024)  # Read first 1KB
-                            if len(data) > 0:
-                                logging.info(
-                                    f"    Read {len(data)} bytes from {os.path.basename(chunk_file)}"
-                                )
-                    except Exception as e:
-                        logging.warning(f"    Failed to read {chunk_file}: {e}")
-
-                logging.info(f"  ✓ Cache refresh successful - chunks are visible")
-                return True
-
-            if attempt < max_attempts:
-                logging.info(f"  No chunks found yet, waiting {delay}s...")
-                time.sleep(delay)
-
-        except subprocess.TimeoutExpired:
-            logging.warning(
-                f"  Timeout finding chunk files, attempt {attempt}/{max_attempts}"
-            )
-            if attempt < max_attempts:
-                time.sleep(delay)
-        except Exception as e:
-            logging.warning(f"  Cache refresh attempt {attempt} failed: {e}")
-            if attempt < max_attempts:
-                time.sleep(delay)
-
-    raise ValueError(
-        f"Could not verify zarr chunks are visible after {max_attempts} attempts"
-    )
-
-
-def validate_zarr_readback(zarr_path, expected_var_id, max_retries=120, retry_delay=60):
-    """Validate that written zarr can be read back with actual data.
-
-    This forces the writer node to verify data is accessible, which helps
-    ensure it will be visible to other nodes in a distributed filesystem.
-    Retries for up to 2 hours by default to handle slow filesystem propagation.
-
-    Args:
-        zarr_path: Path to zarr store
-        expected_var_id: Variable to check
-        max_retries: Number of read attempts (default: 120 = 2 hours with 60s delay)
-        retry_delay: Seconds between retries (default: 60)
-
-    Returns:
-        True if successful
-
-    Raises:
-        ValueError: If data cannot be read after retries
-    """
+def validate_zarr_readback(zarr_path, expected_var_id):
+    """Validate that written zarr can be read back with actual data."""
     import zarr
     import gc
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            elapsed_time = (attempt - 1) * retry_delay / 60  # minutes
-            logging.info(
-                f"Read-back validation attempt {attempt}/{max_retries} (elapsed: {elapsed_time:.1f} min)..."
-            )
+    gc.collect()
 
-            # Close any open connections and force fresh read
-            gc.collect()  # Force garbage collection to close file handles
+    ds = xr.open_zarr(zarr_path, consolidated=False)
 
-            # Try system sync first
-            try:
-                os.sync()
-            except:
-                pass
+    if expected_var_id not in ds.data_vars:
+        raise ValueError(f"Variable '{expected_var_id}' not found in dataset")
 
-            # Open fresh without any caching
-            ds = xr.open_zarr(zarr_path, consolidated=False)
+    arr = ds[expected_var_id]
 
-            if expected_var_id not in ds.data_vars:
-                raise ValueError(f"Variable '{expected_var_id}' not found in dataset")
+    samples_to_check = [
+        ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
+        (
+            "middle",
+            {
+                dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
+                for dim in arr.dims
+            },
+        ),
+        (
+            "end",
+            {
+                dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
+                for dim in arr.dims
+            },
+        ),
+    ]
 
-            arr = ds[expected_var_id]
+    valid_sample_found = False
+    sample_data = None
 
-            # Check actual data, not just metadata
-            # Check multiple samples to handle NaNs at domain edges
-            logging.info(f"Checking data validity by loading samples...")
+    for location, selection in samples_to_check:
+        sample = arr.isel(selection)
+        sample_data = sample.compute()
 
-            samples_to_check = [
-                ("start", {dim: slice(0, min(50, arr.sizes[dim])) for dim in arr.dims}),
-                (
-                    "middle",
-                    {
-                        dim: slice(arr.sizes[dim] // 2, arr.sizes[dim] // 2 + 50)
-                        for dim in arr.dims
-                    },
-                ),
-                (
-                    "end",
-                    {
-                        dim: slice(max(0, arr.sizes[dim] - 50), arr.sizes[dim])
-                        for dim in arr.dims
-                    },
-                ),
-            ]
+        if sample_data.size == 0:
+            continue
 
-            valid_sample_found = False
-            sample_data = None
+        if not sample_data.isnull().all():
+            valid_sample_found = True
+            logging.info(f"  ✓ Found valid data in {location} sample")
+            break
+        else:
+            logging.info(f"  ~ {location} sample is all NaN (may be edge of domain)")
 
-            for location, selection in samples_to_check:
-                sample = arr.isel(selection)
-                sample_data = sample.compute()  # Force actual read from disk
+    if not valid_sample_found:
+        raise ValueError("All samples (start, middle, end) are NaN or empty")
 
-                if sample_data.size == 0:
-                    continue
+    z = zarr.open_group(zarr_path, "r")
+    if expected_var_id not in z:
+        raise ValueError(f"Variable {expected_var_id} not in zarr group")
 
-                if not sample_data.isnull().all():
-                    valid_sample_found = True
-                    logging.info(f"  ✓ Found valid data in {location} sample")
-                    break
-                else:
-                    logging.info(
-                        f"  ~ {location} sample is all NaN (may be edge of domain)"
-                    )
+    var_array = z[expected_var_id]
+    chunk_keys = [
+        k for k in var_array.chunk_store.keys() if expected_var_id in str(k)
+    ]
+    chunk_count = len(chunk_keys)
+    if chunk_count == 0:
+        raise ValueError("No chunk files found!")
 
-            if not valid_sample_found:
-                raise ValueError("All samples (start, middle, end) are NaN or empty")
-
-            # Check that we can access actual chunk files
-            z = zarr.open_group(zarr_path, "r")
-            if expected_var_id not in z:
-                raise ValueError(f"Variable {expected_var_id} not in zarr group")
-
-            var_array = z[expected_var_id]
-            chunk_keys = [
-                k for k in var_array.chunk_store.keys() if expected_var_id in str(k)
-            ]
-            chunk_count = len(chunk_keys)
-            logging.info(f"Found {chunk_count} chunk files for {expected_var_id}")
-
-            if chunk_count == 0:
-                raise ValueError("No chunk files found!")
-
-            # Success!
-            logging.info(f"✓ Read-back validation PASSED on attempt {attempt}")
-            logging.info(f"  - Sample shape: {sample_data.shape}")
-            logging.info(f"  - Sample mean: {float(sample_data.mean()):.4f}")
-            logging.info(
-                f"  - Sample range: [{float(sample_data.min()):.4f}, {float(sample_data.max()):.4f}]"
-            )
-            logging.info(f"  - Chunk count: {chunk_count}")
-            ds.close()
-            return True
-
-        except Exception as e:
-            logging.warning(f"✗ Read-back validation attempt {attempt} failed: {e}")
-
-            if attempt < max_retries:
-                logging.info(f"Waiting {retry_delay}s before retry...")
-                time.sleep(retry_delay)
-
-                # Try to force filesystem visibility
-                try:
-                    os.sync()
-                except:
-                    pass
-
-                # List the directory structure to force metadata refresh
-                try:
-                    subprocess.run(
-                        ["find", str(zarr_path), "-type", "f", "-name", "*.*.*"],
-                        capture_output=True,
-                        check=False,
-                        timeout=30,
-                    )
-                except:
-                    pass
-            else:
-                raise ValueError(
-                    f"Failed to validate zarr after {max_retries} attempts ({max_retries * retry_delay / 3600:.1f} hours). "
-                    f"Last error: {e}"
-                )
-
-    return False
+    logging.info(f"✓ Read-back validation PASSED")
+    logging.info(f"  - Chunk count: {chunk_count}")
+    ds.close()
+    return True
 
 
 def parse_args():
@@ -420,8 +262,6 @@ def validate_output_zarr(output_store, var_id, min_size_mb=5):
     if arr.size == 0:
         raise ValueError(f"Output for {output_store} is empty")
 
-    # Check multiple samples to catch filesystem cache coherency issues
-    # where some chunks may not be visible yet on different nodes
     samples_to_check = [
         ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
         (
@@ -449,9 +289,6 @@ def validate_output_zarr(output_store, var_id, min_size_mb=5):
 
             if sample_data.isnull().all():
                 all_nan_count += 1
-                logging.warning(
-                    f"  WARNING: {location} sample is all NaN in {output_store}"
-                )
             else:
                 logging.debug(
                     f"  {location} sample valid: "
@@ -463,19 +300,10 @@ def validate_output_zarr(output_store, var_id, min_size_mb=5):
             logging.error(f"  ERROR reading {location} sample from {output_store}: {e}")
             raise
 
-    # Only fail if ALL samples are NaN (suggests real problem)
-    # Partial NaN samples may be filesystem cache issues that resolve
     if all_nan_count == len(samples_to_check):
         raise ValueError(
             f"Output for {output_store} appears to be all NaN. "
-            f"Checked {len(samples_to_check)} locations, all returned NaN. "
-            f"This may indicate a filesystem cache coherency issue or failed computation."
-        )
-
-    if all_nan_count > 0:
-        logging.warning(
-            f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
-            f"but validation passed (some data found)"
+            f"Checked {len(samples_to_check)} locations, all returned NaN."
         )
 
     logging.info(f"Written zarr validation passed for {output_store}")
@@ -506,27 +334,6 @@ if __name__ == "__main__":
         logging.info(
             f"Using chunk strategy: time={chunk_dict['time']}, x={chunk_dict['x']}, y={chunk_dict['y']}"
         )
-
-        # CRITICAL: Force filesystem cache refresh before opening zarr files
-        logging.info("=" * 60)
-        logging.info("FORCING FILESYSTEM CACHE REFRESH FOR INPUT FILES")
-        logging.info("=" * 60)
-
-        try:
-            force_filesystem_cache_refresh(minuend_store, max_attempts=10, delay=10)
-        except Exception as e:
-            logging.error(f"Failed to refresh cache for {minuend_store}: {e}")
-            raise
-
-        try:
-            force_filesystem_cache_refresh(subtrahend_store, max_attempts=10, delay=10)
-        except Exception as e:
-            logging.error(f"Failed to refresh cache for {subtrahend_store}: {e}")
-            raise
-
-        logging.info("=" * 60)
-        logging.info("Cache refresh complete, opening zarr files...")
-        logging.info("=" * 60)
 
         # Open datasets with explicit chunking
         logging.info("Opening minuend dataset...")
@@ -603,24 +410,12 @@ if __name__ == "__main__":
                 shutil.rmtree(output_store, ignore_errors=True)
             raise
 
-        # CRITICAL: Validate we can read it back
-        logging.info("=" * 60)
-        logging.info("Starting read-after-write validation (up to 2 hours)...")
-        logging.info("=" * 60)
-
         try:
-            validate_zarr_readback(
-                output_store, variable_id, max_retries=120, retry_delay=60
-            )
-            logging.info("=" * 60)
+            validate_zarr_readback(output_store, variable_id)
             logging.info("✓✓✓ Difference data validated and confirmed readable ✓✓✓")
-            logging.info("=" * 60)
         except Exception as e:
-            logging.error("=" * 60)
             logging.error(f"✗✗✗ FATAL: Cannot read back written data: {e} ✗✗✗")
             logging.error("This data should NOT be used as input to other scripts!")
-            logging.error("=" * 60)
-            # Clean up unreadable output
             if output_store.exists():
                 shutil.rmtree(output_store, ignore_errors=True)
             raise

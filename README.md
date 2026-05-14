@@ -19,8 +19,8 @@ cd test
 unzip data_seward_peninsula_test.zip
 cd ..
 
-# 3. Create the conda environment
-conda env create -f environment.yml
+# 3. Create the conda environment (libmamba solver required)
+conda env create -f environment.yml --solver=libmamba
 conda activate cmip6-downscaling
 
 # 4. Run the test pipeline
@@ -60,23 +60,17 @@ The pipeline performs five major operations, each composed of one or more script
 
 ## Required Dependencies
 
-### External tools
-
-| Tool | Install | Used for |
-|------|---------|----------|
-| **CDO** (Climate Data Operators) | `conda install -c conda-forge cdo` | All regridding steps |
-
-CDO must be available on your `PATH`. Verify with `cdo --version`.
-
 ### Python environment
 
 ```bash
-conda env create -f environment.yml
+conda env create -f environment.yml --solver=libmamba
 conda activate cmip6-downscaling
 ```
 
+> **Note:** `--solver=libmamba` is required — the default conda solver hangs on this dependency set. If you don't have it, install it first: `conda install -n base conda-libmamba-solver`
+
 See [environment.yml](environment.yml) for the full package list. Key packages:
-- `xarray`, `xesmf`, `xclim`, `dask`, `zarr`, `netcdf4`, `h5netcdf`
+- `xarray`, `xesmf`, `xclim`, `esmf`, `cf_xarray`, `dask`, `zarr`, `netcdf4`, `h5netcdf`
 - `pyproj`, `numpy`, `pandas`, `cftime`
 
 ---
@@ -537,11 +531,59 @@ Import the worker functions directly and call them in whatever order suits your 
 
 ---
 
+## Dask cluster configuration
+
+Each worker script (`regrid.py`, `train_qm.py`, `bias_adjust.py`, `dtr.py`, `difference.py`) starts a `dask.distributed.LocalCluster` internally. The defaults are:
+
+| Parameter | Default | Notes |
+|-----------|---------|-------|
+| `n_workers` | 4 | Number of worker processes |
+| `threads_per_worker` | 4 | Threads per process |
+| `memory_limit` | `"28GB"` | Memory per worker |
+
+**Total memory used = `n_workers × memory_limit`.** With the defaults, the cluster uses ~112 GB. Adjust these to fit your machine.
+
+### Choosing values for your system
+
+A practical starting point:
+
+```python
+# For a machine with T GB of RAM and C CPU cores:
+n_workers = C // 4           # 4 threads per worker is a good default
+memory_limit = f"{int(T * 0.8 / n_workers)}GB"  # leave 20% for the OS
+```
+
+For example, on a **32 GB / 8-core laptop**:
+- `n_workers=2`, `threads_per_worker=4`, `memory_limit="12GB"` (24 GB total)
+
+On a **256 GB / 32-core workstation**:
+- `n_workers=8`, `threads_per_worker=4`, `memory_limit="28GB"` (224 GB total)
+
+### Where to change the defaults
+
+Each `configure_dask_for_*()` function at the top of the worker script has a hardcoded call in `__main__`. Edit those values directly:
+
+```python
+# e.g. in bias_adjust/train_qm.py
+client = configure_dask_for_training(
+    n_workers=2,            # ← change to fit your machine
+    threads_per_worker=4,
+    memory_limit="12GB",    # ← change to fit your machine
+    local_directory=worker_dir,
+)
+```
+
+The same pattern applies to `configure_dask_for_regridding()` in `regridding/regrid.py`, `configure_dask_for_adjustment()` in `bias_adjust/bias_adjust.py`, `configure_dask_for_dtr()` in `derived/dtr.py`, and `configure_dask_for_difference()` in `derived/difference.py`.
+
+> **Note:** `train_qm.py` and `bias_adjust.py` require the entire time dimension to be a single chunk (`time=-1`). This is an xclim requirement for QDM. If you reduce `memory_limit` significantly, also reduce the spatial chunk sizes (`x`/`y`) in the rechunking calls inside those scripts to keep individual chunks below your worker memory limit.
+
+---
+
 ## Test Suite
 
 See [test/README.md](test/README.md) for a complete walkthrough using the bundled test data.
 
-The test domain is the **Seward Peninsula, Alaska** — a small 4×8 cell CMIP6 clip (~63–68°N, 168–159°W) paired with a 62×70 cell WRF-ERA5 clip at 12 km resolution. It exercises the full pipeline with one model (MIROC6), two scenarios (historical 2000–2009, ssp370 2045–2054), and two variables (`pr`, `snw`).
+The test domain is the **Seward Peninsula, Alaska** — a small 4×8 cell CMIP6 clip (~63–68°N, 168–159°W) paired with a 62×70 cell WRF-ERA5 clip at 12 km resolution. It exercises the full pipeline with one model (MIROC6), two scenarios (historical 2000–2009, ssp370 2045–2054), and four variables (`pr`, `snw`, `tasmax`, `tasmin`). The DTR derivation path is fully exercised.
 
 Download the test data archive from `[link TBD]` and unzip it into `test/data/` before running.
 

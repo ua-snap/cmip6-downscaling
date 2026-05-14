@@ -7,33 +7,24 @@ and can be opened with xarray.open_mfdataset.
 
 Example usage:
     python dtr.py \
-        --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmax \
-        --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/regrid/GFDL-ESM4/historical/day/tasmin \
-        --output_dir /import/beegfs/CMIP6/snapdata/dtr_processing/netcdf/GFDL-ESM4/historical/day/dtr \
-        --dtr_tmp_fn dtr_GFDL-ESM4_historical_{start_date}_{end_date}.nc
+        --tmax_dir /path/to/regridded/MIROC6/historical/day/tasmax \
+        --tmin_dir /path/to/regridded/MIROC6/historical/day/tasmin \
+        --output_dir /path/to/dtr/MIROC6/historical/day/dtr \
+        --dtr_tmp_fn dtr_MIROC6_historical_{start_date}_{end_date}.nc
 
     or ERA5 e.g.:
 
     python dtr.py \
-        --tmax_dir /import/beegfs/CMIP6/arctic-cmip6/daily_era5_4km_3338/netcdf/t2max \
-        --tmin_dir /import/beegfs/CMIP6/arctic-cmip6/daily_era5_4km_3338/netcdf/t2min \
-        --output_dir /import/beegfs/CMIP6/snapdata/dtr_processing/era5_dtr \
-        --dtr_tmp_fn dtr_{year}_4km_3338.nc
-
-
-    python dtr.py \
-        --tmax_dir /center1/CMIP6/kmredilla/daily_era5_4km_3338/netcdf/t2max \
-        --tmin_dir /center1/CMIP6/kmredilla/daily_era5_4km_3338/netcdf/t2min \
-        --output_dir /import/beegfs/CMIP6/kmredilla/dtr_processing/era5_dtr/dtr \
-        --dtr_tmp_fn dtr_{year}_4km_3338.nc
+        --tmax_dir /path/to/era5/netcdf/t2max \
+        --tmin_dir /path/to/era5/netcdf/t2min \
+        --output_dir /path/to/era5_dtr/dtr \
+        --dtr_tmp_fn dtr_{year}_era5_12km_3338.nc
 """
 
 import argparse
 import logging
 from pathlib import Path
-import subprocess
 import sys
-import time
 import numpy as np
 import xarray as xr
 import string
@@ -50,7 +41,7 @@ logging.basicConfig(
 
 
 def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit="28GB"):
-    """Configure Dask LocalCluster optimized for DTR calculation on 128GB nodes.
+    """Configure Dask LocalCluster for DTR calculation.
 
     DTR calculation is I/O intensive (reading many files) and compute simple (subtraction).
 
@@ -104,81 +95,10 @@ def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit="28GB
     return client
 
 
-def force_filesystem_sync(file_path):
-    """Force filesystem to sync/flush data to disk.
-    
-    Critical for BeeGFS and other distributed filesystems where writes
-    may not be immediately visible across nodes.
-    
-    Args:
-        file_path: Path to file or directory to sync
-    """
-    try:
-        os.sync()
-    except Exception as e:
-        logging.warning(f"os.sync() failed: {e}")
-    
-    # Force metadata refresh by listing directory
-    try:
-        if file_path.is_file():
-            parent = file_path.parent
-        else:
-            parent = file_path
-        subprocess.run(
-            ["ls", "-la", str(parent)],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception as e:
-        logging.warning(f"Directory listing for cache refresh failed: {e}")
-
-
-def validate_file_readback(file_path, var_id="dtr", max_retries=10, retry_delay=5):
-    """Validate that a written file can be read back with valid data.
-    
-    Retries multiple times to handle filesystem cache coherency delays.
-    This is critical for multi-node jobs on distributed filesystems.
-    
-    Args:
-        file_path: Path to file to validate
-        var_id: Variable ID to check (default: "dtr")
-        max_retries: Maximum number of read attempts
-        retry_delay: Seconds between retry attempts
-        
-    Returns:
-        True if validation succeeds
-        
-    Raises:
-        ValueError: If file cannot be validated after retries
-    """
-    for attempt in range(1, max_retries + 1):
-        try:
-            # Force sync before attempting read
-            force_filesystem_sync(file_path)
-            
-            # Use existing validation function
-            validate_output_file(file_path, var_id=var_id)
-            
-            # Success!
-            return True
-            
-        except Exception as e:
-            if attempt < max_retries:
-                logging.warning(
-                    f"  Read-back attempt {attempt}/{max_retries} failed for {file_path.name}: {e}"
-                )
-                logging.warning(f"  Retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-                # Increase delay for next attempt (exponential backoff)
-                retry_delay = min(retry_delay * 1.5, 30)
-            else:
-                raise ValueError(
-                    f"Failed to validate {file_path.name} after {max_retries} attempts. "
-                    f"Last error: {e}"
-                )
-    
-    return False
+def validate_file_readback(file_path, var_id="dtr"):
+    """Validate that a written file can be read back with valid data."""
+    validate_output_file(file_path, var_id=var_id)
+    return True
 
 
 def is_transient_error(error):
@@ -198,12 +118,11 @@ def is_transient_error(error):
         "memory",
         "timeout",
         "connection",
-        "no such file",  # Filesystem visibility issues
+        "no such file",
         "file not found",
         "filesystem",
         "i/o error",
-        "read-back",  # Our validation failures
-        "cache coherency",
+        "read-back",
     ]
     return any(pattern in error_str for pattern in transient_patterns)
 
@@ -285,34 +204,10 @@ def get_tmax_tmin_fps_era5(tmax_dir, tmin_dir):
 
 
 def get_tmax_tmin_fps_cmip6(input_dir, model, scenario):
-    """Helper function for getting tasmax and tasmin filepaths. Put in function for checking prior to slurming.
-    Assumes that all files in the input directories are the target input files.
-    """
-
-    # Read all of the files in cmip6_files_dir and concatenate them into a single list
-    cmip6_file_list = []
-    for filename in os.listdir(input_dir):
-        file_path = os.path.join(input_dir, filename)
-        if os.path.isfile(file_path):
-            with open(file_path, "r") as f:
-                cmip6_file_list.extend([line.strip() for line in f if line.strip()])
-
-    tmax_fps = [
-        fp
-        for fp in cmip6_file_list
-        if "tasmax" in fp and model in fp and scenario in fp
-    ]
-    tmin_fps = [
-        fp
-        for fp in cmip6_file_list
-        if "tasmin" in fp and model in fp and scenario in fp
-    ]
-
-    tmax_fps.sort()
-    tmin_fps.sort()
-
-    print("tmax_fps:", tmax_fps)
-    print("tmin_fps:", tmin_fps)
+    """Get tasmax and tasmin file paths by globbing the regridded output directory."""
+    input_dir = Path(input_dir)
+    tmax_fps = sorted(input_dir.rglob(f"tasmax*{model}*{scenario}*.nc"))
+    tmin_fps = sorted(input_dir.rglob(f"tasmin*{model}*{scenario}*.nc"))
 
     assert (
         len(tmax_fps) > 0
@@ -390,9 +285,6 @@ def make_output_filepath(output_dir, dtr_tmp_fn, start_date, end_date):
 def validate_output_file(output_fp, var_id="dtr"):
     """Validate that the output file exists and contains valid data.
 
-    Checks multiple samples across the dataset to handle filesystem cache
-    coherency issues on distributed systems like beegfs.
-
     Args:
         output_fp: Path to output file
         var_id: Variable identifier to check
@@ -422,8 +314,6 @@ def validate_output_file(output_fp, var_id="dtr"):
             if arr.size == 0:
                 raise ValueError(f"Variable '{var_id}' is empty in: {output_fp}")
 
-            # Check multiple samples to catch filesystem cache coherency issues
-            # where some chunks may not be visible yet on different nodes
             samples_to_check = [
                 ("start", {dim: slice(0, min(10, arr.sizes[dim])) for dim in arr.dims}),
                 (
@@ -451,9 +341,6 @@ def validate_output_file(output_fp, var_id="dtr"):
 
                     if sample_data.isnull().all():
                         all_nan_count += 1
-                        logging.warning(
-                            f"  WARNING: {location} sample is all NaN in {output_fp.name}"
-                        )
                     else:
                         logging.debug(
                             f"  {location} sample valid: "
@@ -467,19 +354,10 @@ def validate_output_file(output_fp, var_id="dtr"):
                     )
                     raise
 
-            # Only fail if ALL samples are NaN (suggests real problem)
-            # Partial NaN samples may be filesystem cache issues that resolve
             if all_nan_count == len(samples_to_check):
                 raise ValueError(
                     f"Variable '{var_id}' appears to be all NaN in: {output_fp}. "
-                    f"Checked {len(samples_to_check)} locations, all returned NaN. "
-                    f"This may indicate a filesystem cache coherency issue or failed computation."
-                )
-
-            if all_nan_count > 0:
-                logging.warning(
-                    f"  {all_nan_count}/{len(samples_to_check)} samples were all NaN, "
-                    f"but validation passed (some data found)"
+                    f"Checked {len(samples_to_check)} locations, all returned NaN."
                 )
 
     except Exception as e:
@@ -593,11 +471,6 @@ if __name__ == "__main__":
             )
             try:
                 year_ds.to_netcdf(output_fp, compute=True)
-                
-                # CRITICAL: Force filesystem sync after write
-                # This ensures data is visible across nodes in distributed filesystems like BeeGFS
-                force_filesystem_sync(output_fp)
-                
             except Exception as e:
                 logging.error(f"Failed to write {output_fp}: {e}")
                 if output_fp.exists():
@@ -605,7 +478,7 @@ if __name__ == "__main__":
                 raise
 
             # Validate output with retry logic
-            validate_file_readback(output_fp, var_id="dtr", max_retries=10, retry_delay=5)
+            validate_file_readback(output_fp, var_id="dtr")
             logging.info(f"✓ Completed year {year} ({idx}/{total_years})")
 
         logging.info(f"Successfully processed all {total_years} years")

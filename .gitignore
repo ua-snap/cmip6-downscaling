@@ -22,3 +22,7 @@ dask-worker-space/
 # Common scratch
 .DS_Store
 *.log
+
+# notes
+PR_NOTES.md
+WORK_IN_PROGRESS.md

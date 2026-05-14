@@ -1,13 +1,14 @@
 name: cmip6-downscaling
 channels:
   - conda-forge
-  - defaults
+  - nodefaults
 dependencies:
   - python=3.9
   - numpy
   - pandas
   - xarray
   - dask
+  - distributed
   - zarr
   - netcdf4
   - h5netcdf
@@ -17,9 +18,21 @@ dependencies:
   - pyproj
   - tqdm
   - matplotlib
-  - geopandas
-  - cdo
+  - shapely
+  - bottleneck
+  - cf_xarray
+  - esmf=*=nompi*
+  - esmpy=*=nompi*
+  - importlib_metadata<5
+  - xclim=0.47.0
+  - xesmf=0.8.4
+  - pint
+  - sparse
+  - lmoments3
+  - statsmodels
   - pip
   - pip:
-    - xclim==0.47.0
-    - xesmf==0.8.4
+    - geopandas
+    - fiona
+    - click-plugins
+    - cligj
