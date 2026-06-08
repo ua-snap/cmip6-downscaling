@@ -51,7 +51,7 @@ CMIP6_TO_ERA5_VARS = {
     "dtr": "dtr",
     "hurs": "rh2_mean",
     "hursmin": "rh2_min",
-    "snw": "snow_sum",
+    "snw": "snow_mean",
     "sfcWind": "wspd10_mean",
 }
 

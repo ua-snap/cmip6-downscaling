@@ -23,7 +23,7 @@ Bias adjustment uses [Quantile Delta Mapping](https://doi.org/10.1175/JCLI-D-14-
 
 `pr`, `dtr`, and `snw` contain many exact-zero (or near-zero) values that would distort quantile estimation. Two preprocessing steps address this:
 
-1. **Jitter** — Values below a small threshold are replaced with uniform random noise in `[0, threshold)` before training. This spreads the zero-mass across the lowest quantiles so they can be matched continuously rather than as a point mass.
+1. **Jitter** — Values below a small threshold are replaced with uniform random noise in `[0, threshold)` during QDM training of the historical/reference distributions only. This spreads the zero-mass across the lowest quantiles so they can be matched continuously rather than as a point mass. Jitter is **not** applied when adjusting scenario/projection data, so projected-era values are allowed to be exactly `0`.
 
    | Variable | Jitter threshold |
    |----------|-----------------|
@@ -188,7 +188,7 @@ from the [cmip6-utils](https://github.com/ua-snap/cmip6-utils) repository. This 
   and file names
 - Converts temperature variables (`t2_max`, `t2_min`) from degrees Celsius to Kelvin
 
-The `snow_sum` variable is passed through without renaming. The output of this step
+The `snow_mean` variable is passed through without renaming. The output of this step
 is what is placed in the `<era5_dir>` expected by this pipeline.
 
 #### Variable naming conventions
@@ -204,7 +204,7 @@ working examples of all required naming and format conventions):
 | `pr` | `pr` | Precipitation |
 | `hurs` | `rh2_mean` | Relative humidity |
 | `hursmin` | `rh2_min` | Daily minimum relative humidity |
-| `snw` | `snow_sum` | Snow amount |
+| `snw` | `snow_mean` | Snow amount |
 | `sfcWind` | `wspd10_mean` | Wind speed |
 
 See the [test suite](test/README.md) for concrete file format examples.
@@ -676,7 +676,7 @@ bash test/run_pipeline.sh /path/to/work_dir 12
 | `pr` | `pr` | multiplicative (*) | bilinear | No | Yes |
 | `hurs` | `rh2_mean` | additive (+) | bilinear | No | No |
 | `hursmin` | `rh2_min` | additive (+) | bilinear | No | No |
-| `snw` | `snow_sum` | multiplicative (*) | **conservative** | Yes | Yes |
+| `snw` | `snow_mean` | multiplicative (*) | **conservative** | Yes | Yes |
 | `sfcWind` | `wspd10_mean` | multiplicative (*) | bilinear | No | No |
 
 ### Notes on special variables

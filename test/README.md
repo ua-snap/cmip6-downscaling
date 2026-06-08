@@ -58,8 +58,8 @@ test/data/
 └── wrf_era5/
     ├── pr/
     │   └── pr_{2000..2009}_daily_era5_12km_3338.nc
-    ├── snow_sum/
-    │   └── snow_sum_{2000..2009}_daily_era5_12km_3338.nc
+    ├── snow_mean/
+    │   └── snow_mean_{2000..2009}_daily_era5_12km_3338.nc
     ├── t2max/
     │   └── t2max_{2000..2009}_daily_era5_12km_3338.nc
     └── t2min/
@@ -113,7 +113,7 @@ extents. The scripts support both — `run_cascade_regrid.py` can be called twic
 | 7 | `derived/run_cmip6_dtr.py` | Compute CMIP6 DTR from regridded tasmax/tasmin |
 | 8 | `derived/run_era5_dtr.py` | Compute ERA5 DTR from t2max/t2min |
 | 9 | `bias_adjust/run_cmip6_netcdf_to_zarr.py` | Convert regridded CMIP6 → Zarr (pr, snw, tasmax, dtr) |
-| 10a | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 base vars → Zarr (pr, snow_sum, t2max) |
+| 10a | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 base vars → Zarr (pr, snow_mean, t2max) |
 | 10b | `bias_adjust/run_era5_netcdf_to_zarr.py` | Convert ERA5 DTR → Zarr |
 | 11 | `bias_adjust/run_train_qm.py` | Train QDM bias adjustment models |
 | 12 | `bias_adjust/run_bias_adjust.py` | Apply bias adjustment |
@@ -168,7 +168,7 @@ WRF-downscaled ERA5 variable names (WRF-downscaled ERA5 ID → CMIP6 variable):
 - `t2max` → `tasmax`
 - `t2min` → `tasmin`
 - `pr` → `pr`
-- `snow_sum` → `snw`
+- `snow_mean` → `snw`
 - `rh2_mean` → `hurs`
 - `wspd10_mean` → `sfcWind`
 - `dtr` → `dtr` (derived, not a raw WRF-downscaled ERA5 variable)

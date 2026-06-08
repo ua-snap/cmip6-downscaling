@@ -439,6 +439,15 @@ if __name__ == "__main__":
         train_ds = xr.open_zarr(
             train_path, consolidated=True
         )  # Training data is small, no need to chunk
+
+        # xclim QDM returns wrong dim order when training data has (x, y) instead of (y, x)
+        for var in train_ds.data_vars:
+            if train_ds[var].dims[:2] == ("x", "y"):
+                logging.warning(
+                    f"Training data has wrong dimension order: {train_ds[var].dims}; transposing to (y, x, ...)"
+                )
+                train_ds[var] = train_ds[var].transpose("y", "x", ...)
+
         qm = sdba.QuantileDeltaMapping.from_dataset(train_ds)
 
         # Load simulation data with optimized chunks
@@ -473,6 +482,21 @@ if __name__ == "__main__":
             extrapolation="constant",
             interp="nearest",
         )
+
+        # xclim QDM may return dimensions in wrong order — ensure (time, y, x)
+        expected_dims = ("time", "y", "x")
+        if scen.dims != expected_dims:
+            logging.warning(
+                f"QDM returned wrong dimension order: {scen.dims}; transposing to {expected_dims}"
+            )
+            scen = scen.transpose(*expected_dims)
+
+        # xclim QDM returns NaN when sim=0 and hist_q_min > 0 (snow-specific failure
+        # mode where warming drives cells to zero that historically had non-zero snow).
+        # Fill QDM-produced NaN with the unadjusted sim value: sim=0 fills as 0 (correct),
+        # ocean/no-data NaN fills as NaN (preserved). Result: output NaN == input NaN.
+        scen = scen.fillna(sim_var_rechunked)
+
         scen_ds = scen.to_dataset(name=var_id)
         scen_ds = drop_non_coord_vars(scen_ds)
         scen_ds = add_global_attrs(scen_ds, sim_ds)

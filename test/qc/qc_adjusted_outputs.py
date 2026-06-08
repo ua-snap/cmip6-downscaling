@@ -56,8 +56,8 @@ VARIABLES = {
     "snw": {
         "label": "Snow Water Equivalent",
         "units": "kg m⁻²",
-        "era5_store": "snow_sum_era5.zarr",
-        "era5_var": "snow_sum",
+        "era5_store": "snow_mean_era5.zarr",
+        "era5_var": "snow_mean",
         "cmip6_var": "snw",
         "cmip6_scale": 1.0,
         "min_bound": 0.0,
@@ -329,7 +329,7 @@ def main():
     y_coords = _coords_ds.y.values
     map_extent = [x_coords.min(), x_coords.max(), y_coords.min(), y_coords.max()]
 
-    ne_path = Path(__file__).parent / "data/natural_earth/ne_50m_coastline.shp"
+    ne_path = Path(__file__).parent.parent / "data/natural_earth/ne_50m_coastline.shp"
     coast = gpd.read_file(ne_path).to_crs("EPSG:3338")
 
     all_pass = True

@@ -43,7 +43,7 @@ ADJUST_VARS="pr snw tasmax dtr"
 
 # ERA5_BASE_VARS: ERA5 variables in test/data/wrf_era5/ to zarr-convert.
 # ERA5 dtr is computed by step 8 and zarr-converted separately in step 10b.
-ERA5_BASE_VARS="pr snow_sum t2max"
+ERA5_BASE_VARS="pr snow_mean t2max"
 
 # Year ranges — test data covers 2000-2009 (ERA5/historical) and 2045-2054 (ssp370)
 # Production defaults are ERA5 1965-2014, future 2015-2100
@@ -159,7 +159,7 @@ python "$BIAS_ADJUST/run_cmip6_netcdf_to_zarr.py" \
     --future_end_year "$FUTURE_END_YEAR"
 
 # ── Step 10a: Convert ERA5 base vars → Zarr ───────────────────────────────
-echo "[10a/13] Converting ERA5 base vars (pr, snow_sum, t2max) → Zarr..."
+echo "[10a/13] Converting ERA5 base vars (pr, snow_mean, t2max) → Zarr..."
 mkdir -p "$WORK_DIR/era5_zarr"
 python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
     --netcdf_dir "$ERA5_DIR" \
