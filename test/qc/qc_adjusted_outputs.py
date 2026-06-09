@@ -34,9 +34,9 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # Per-variable configuration.
 #   era5_store / era5_var : ERA5 reference zarr and variable name inside it
 #                           (None for derived variables with no direct ERA5 reference)
-#   cmip6_var             : variable name in the raw CMIP6 zarr
+#   cmip6_var             : variable name in the regridded CMIP6 zarr
 #                           (None for derived variables)
-#   cmip6_scale           : multiply raw CMIP6 values by this (e.g. pr kg m-2 s-1 → mm d-1)
+#   cmip6_scale           : multiply regridded CMIP6 values by this (e.g. pr kg m-2 s-1 → mm d-1)
 #   min_bound / max_bound : physical plausibility limits
 #   force_vmin_zero       : pin the map colour-scale lower bound at 0
 VARIABLES = {
@@ -178,30 +178,30 @@ def _map_vrange(arrays, force_vmin_zero):
     return vmin, vmax
 
 
-def make_figure_with_ref(var, cfg, hist_arr, ssp_arr, era5_arr, raw_arr,
-                          hist_da, era5_da, raw_da,
+def make_figure_with_ref(var, cfg, hist_arr, ssp_arr, era5_arr, regridded_arr,
+                          hist_da, era5_da, regridded_da,
                           coast, map_extent, x_coords, y_coords, model):
-    """Full QC figure for variables that have an ERA5 reference and raw CMIP6."""
+    """Full QC figure for variables that have an ERA5 reference and regridded CMIP6."""
     label, units, cmap = cfg["label"], cfg["units"], cfg["cmap"]
 
     # Maps
     era5_map = np.nanmean(era5_arr, axis=0)
-    raw_map  = np.nanmean(raw_arr,  axis=0)
+    regridded_map  = np.nanmean(regridded_arr,  axis=0)
     hist_map = np.nanmean(hist_arr, axis=0)
     ssp_map  = np.nanmean(ssp_arr,  axis=0)
     delta_map = ssp_map - hist_map
     delta_mean = float(np.nanmean(delta_map))
     abs_max_delta = max(np.nanpercentile(np.abs(delta_map), 99), 1e-6)
-    vmin_map, vmax_map = _map_vrange([era5_map, raw_map, hist_map, ssp_map],
+    vmin_map, vmax_map = _map_vrange([era5_map, regridded_map, hist_map, ssp_map],
                                       cfg["force_vmin_zero"])
 
     # Climatology (DataArrays needed for groupby)
-    raw_climo  = monthly_climo(raw_da)
+    regridded_climo  = monthly_climo(regridded_da)
     adj_climo  = monthly_climo(hist_da)
     era5_climo = monthly_climo(era5_da)
 
     # CDFs
-    raw_x,  raw_y  = empirical_cdf(raw_arr)
+    regridded_x,  regridded_y  = empirical_cdf(regridded_arr)
     adj_x,  adj_y  = empirical_cdf(hist_arr)
     era5_x, era5_y = empirical_cdf(era5_arr)
     quantiles = np.linspace(0.01, 0.99, 99)
@@ -221,13 +221,13 @@ def make_figure_with_ref(var, cfg, hist_arr, ssp_arr, era5_arr, raw_arr,
     ax_climo = fig.add_subplot(gs_lines[0, 0])
     ax_cdf   = fig.add_subplot(gs_lines[0, 1])
     ax_era5  = fig.add_subplot(gs_maps[0, 0])
-    ax_raw   = fig.add_subplot(gs_maps[0, 1])
+    ax_regridded   = fig.add_subplot(gs_maps[0, 1])
     ax_hist  = fig.add_subplot(gs_maps[1, 0])
     ax_ssp   = fig.add_subplot(gs_maps[1, 1])
     ax_delta = fig.add_subplot(gs_delta[0])
 
     months_x = np.arange(1, 13)
-    ax_climo.plot(months_x, raw_climo,  "C0--", label="CMIP6 raw", linewidth=1.5)
+    ax_climo.plot(months_x, regridded_climo,  "C0--", label="CMIP6 regridded", linewidth=1.5)
     ax_climo.plot(months_x, adj_climo,  "C0-",  label="Adjusted",  linewidth=2.0)
     ax_climo.plot(months_x, era5_climo, "C1-",  label="ERA5 ref",  linewidth=1.5)
     ax_climo.set_xticks(months_x)
@@ -237,7 +237,7 @@ def make_figure_with_ref(var, cfg, hist_arr, ssp_arr, era5_arr, raw_arr,
     ax_climo.legend(fontsize=8)
     ax_climo.grid(True, alpha=0.3)
 
-    ax_cdf.plot(raw_x, raw_y,   "C0--", label="CMIP6 raw", linewidth=1.5)
+    ax_cdf.plot(regridded_x, regridded_y,   "C0--", label="CMIP6 regridded", linewidth=1.5)
     ax_cdf.plot(adj_x, adj_y,   "C0-",  label="Adjusted",  linewidth=2.0)
     ax_cdf.plot(era5_x, era5_y, "C1-",  label="ERA5 ref",  linewidth=1.5)
     ax_cdf.set_xlabel(f"{var} ({units})")
@@ -249,7 +249,7 @@ def make_figure_with_ref(var, cfg, hist_arr, ssp_arr, era5_arr, raw_arr,
     mk = dict(units=units, coast=coast, map_extent=map_extent,
               x_coords=x_coords, y_coords=y_coords)
     map_panel(ax_era5, era5_map, "ERA5 reference (2000–2009)",      cmap, vmin_map, vmax_map, **mk)
-    map_panel(ax_raw,  raw_map,  "CMIP6 raw (2000–2009)",           cmap, vmin_map, vmax_map, **mk)
+    map_panel(ax_regridded,  regridded_map,  "CMIP6 regridded (2000–2009)",     cmap, vmin_map, vmax_map, **mk)
     map_panel(ax_hist, hist_map, "Adjusted historical (2000–2009)", cmap, vmin_map, vmax_map, **mk)
     map_panel(ax_ssp,  ssp_map,  "Adjusted ssp370 (2045–2054)",     cmap, vmin_map, vmax_map, **mk)
     map_panel(ax_delta, delta_map,
@@ -365,7 +365,7 @@ def main():
             print("  artifact. Post-processing clipping is required before scientific use.")
 
         # 2. Bias reduction + figure data
-        era5_da = raw_da = era5_arr = raw_arr = None
+        era5_da = regridded_da = era5_arr = regridded_arr = None
         has_ref = False
 
         if cfg["era5_store"] is not None:
@@ -374,16 +374,16 @@ def main():
 
             if era5_path.exists() and cmip6_path.exists():
                 era5_da  = load_zarr(era5_path,  cfg["era5_var"])
-                raw_da   = load_zarr(cmip6_path, cfg["cmip6_var"])
+                regridded_da   = load_zarr(cmip6_path, cfg["cmip6_var"])
                 if cfg["cmip6_scale"] != 1.0:
-                    raw_da = raw_da * cfg["cmip6_scale"]
+                    regridded_da = regridded_da * cfg["cmip6_scale"]
                 era5_arr = era5_da.compute().values
-                raw_arr  = raw_da.compute().values
+                regridded_arr  = regridded_da.compute().values
 
-                raw_climo  = monthly_climo(raw_da)
+                regridded_climo  = monthly_climo(regridded_da)
                 adj_climo  = monthly_climo(hist_da)
                 era5_climo = monthly_climo(era5_da)
-                rmse_before = float(np.sqrt(np.mean((raw_climo  - era5_climo) ** 2)))
+                rmse_before = float(np.sqrt(np.mean((regridded_climo  - era5_climo) ** 2)))
                 rmse_after  = float(np.sqrt(np.mean((adj_climo  - era5_climo) ** 2)))
                 bias_ok = rmse_after < rmse_before
                 var_pass = var_pass and bias_ok
@@ -408,8 +408,8 @@ def main():
         print("Generating figure...")
         if has_ref:
             fig = make_figure_with_ref(
-                var, cfg, hist_arr, ssp_arr, era5_arr, raw_arr,
-                hist_da, era5_da, raw_da,
+                var, cfg, hist_arr, ssp_arr, era5_arr, regridded_arr,
+                hist_da, era5_da, regridded_da,
                 coast, map_extent, x_coords, y_coords, model,
             )
         else:
