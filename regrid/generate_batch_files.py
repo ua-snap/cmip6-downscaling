@@ -4,6 +4,7 @@ It utilizes code from the explore_grids.ipynb notebook to select the files which
 
 import argparse
 import concurrent.futures
+import sys
 import warnings
 import numpy as np
 import pandas as pd
@@ -11,6 +12,8 @@ import xarray as xr
 import tqdm
 from multiprocessing import set_start_method
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # project
 from config import *

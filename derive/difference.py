@@ -24,6 +24,14 @@ from datetime import datetime
 import dask
 from dask.distributed import Client, LocalCluster
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import (
+    DASK_N_WORKERS, DASK_THREADS_PER_WORKER, DASK_MEMORY_LIMIT,
+    DASK_MEMORY_TARGET, DASK_MEMORY_SPILL, DASK_MEMORY_PAUSE, DASK_MEMORY_TERMINATE,
+    DASK_ARRAY_CHUNK_SIZE,
+    SQUEEZE_TASMIN_MIN,
+)
 from zarr.sync import ThreadSynchronizer
 
 logging.basicConfig(
@@ -60,16 +68,16 @@ def configure_dask_for_difference(
     dask.config.set(
         {
             # Memory management
-            "distributed.worker.memory.target": 0.75,
-            "distributed.worker.memory.spill": 0.85,
-            "distributed.worker.memory.pause": 0.90,
-            "distributed.worker.memory.terminate": 0.95,
+            "distributed.worker.memory.target": DASK_MEMORY_TARGET,
+            "distributed.worker.memory.spill": DASK_MEMORY_SPILL,
+            "distributed.worker.memory.pause": DASK_MEMORY_PAUSE,
+            "distributed.worker.memory.terminate": DASK_MEMORY_TERMINATE,
             # I/O optimization
             "distributed.comm.timeouts.tcp": "120s",
             "distributed.scheduler.bandwidth": 1e9,
             # Array settings
             "array.slicing.split_large_chunks": True,
-            "array.chunk-size": "128 MiB",
+            "array.chunk-size": DASK_ARRAY_CHUNK_SIZE,
         }
     )
 
@@ -320,7 +328,9 @@ if __name__ == "__main__":
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_difference(
-            n_workers=4, threads_per_worker=4, memory_limit="28GB"
+            n_workers=DASK_N_WORKERS,
+            threads_per_worker=DASK_THREADS_PER_WORKER,
+            memory_limit=DASK_MEMORY_LIMIT,
         )
 
         logging.info(
@@ -374,7 +384,7 @@ if __name__ == "__main__":
         variable_id = diff_ds.attrs["variable_id"]
 
         # Apply variable-specific thresholding
-        min_tasmin = 203.15
+        min_tasmin = SQUEEZE_TASMIN_MIN
         if variable_id == "tasmin":
             logging.info("Squeezing tasmin values below limit...")
             count_below_threshold = (

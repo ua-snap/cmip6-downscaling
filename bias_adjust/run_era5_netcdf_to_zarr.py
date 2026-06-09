@@ -19,8 +19,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import era5_tmp_fn, era5_zarr_tmp_fn
-from luts import era5_start_year as _default_start, era5_end_year as _default_end
+from config import ERA5_START_YEAR as _default_start, ERA5_END_YEAR as _default_end
 
 logging.basicConfig(
     level=logging.INFO,

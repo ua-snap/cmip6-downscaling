@@ -41,7 +41,7 @@ Bias adjustment uses [Quantile Delta Mapping](https://doi.org/10.1175/JCLI-D-14-
 | `dtr` | Multiplicative (`*`) | Range must remain non-negative |
 | `pr` | Multiplicative (`*`) | Ratio-based; preserves non-negativity |
 | `snw` | Multiplicative (`*`) | Ratio-based; preserves non-negativity |
-| `sfcWind`, `hurs`, `hursmin` | See `luts.py` | Same rationale as above by variable type |
+| `sfcWind`, `hurs`, `hursmin` | See `config.py` | Same rationale as above by variable type |
 
 ### Post-adjustment squeezing (physical bounds clipping)
 
@@ -254,12 +254,12 @@ DOMAIN_4KM  = {"min_lon": 183, "max_lon": 232, "min_lat": 54, "max_lat": 73}
 Compute diurnal temperature range from raw CMIP6 tasmax and tasmin files before regridding.
 
 ```bash
-python derived/run_cmip6_dtr.py \
+python derive/run_cmip6_dtr.py \
     --input_dir /path/to/cmip6_dir \
     --output_dir /path/to/run_dir/cmip6_dtr \
     --models "GFDL-ESM4 CESM2" \
     --scenarios "historical ssp370" \
-    --worker_script derived/dtr.py
+    --worker_script derive/dtr.py
 ```
 
 ---
@@ -269,7 +269,7 @@ python derived/run_cmip6_dtr.py \
 Scans the CMIP6 directory, groups files by model/scenario/variable/grid, and writes text "batch files" listing the files to be regridded. Batch files go in `<slurm_dir>/first_regrid/batch/`.
 
 ```bash
-python regridding/generate_batch_files.py \
+python regrid/generate_batch_files.py \
     --cmip6_directory /path/to/cmip6_dir \
     --regrid_batch_dir /path/to/run_dir/batches/first_regrid \
     --vars "tasmax pr" \
@@ -281,7 +281,7 @@ python regridding/generate_batch_files.py \
 If you also need DTR files regridded, run again pointing at the DTR output:
 
 ```bash
-python regridding/generate_batch_files.py \
+python regrid/generate_batch_files.py \
     --cmip6_directory /path/to/run_dir/cmip6_dtr \
     --regrid_batch_dir /path/to/run_dir/batches/first_regrid \
     --vars "dtr" \
@@ -297,7 +297,7 @@ python regridding/generate_batch_files.py \
 Creates the first intermediate grid file (between native CMIP6 resolution and the final WRF-downscaled ERA5 grid). The `--step` argument controls the degree spacing.
 
 ```bash
-python regridding/make_intermediate_target_grid_file.py \
+python regrid/make_intermediate_target_grid_file.py \
     --src_file /path/to/any_cmip6_file.nc \
     --out_file /path/to/run_dir/first_regrid_target.nc \
     --step 0.5 \
@@ -307,7 +307,7 @@ python regridding/make_intermediate_target_grid_file.py \
 For a custom domain, override the bounds:
 
 ```bash
-python regridding/make_intermediate_target_grid_file.py \
+python regrid/make_intermediate_target_grid_file.py \
     --src_file /path/to/any_cmip6_file.nc \
     --out_file /path/to/run_dir/first_regrid_target.nc \
     --step 0.5 \
@@ -321,7 +321,7 @@ python regridding/make_intermediate_target_grid_file.py \
 Only needed if processing land-only variables (`snw`, etc.).
 
 ```bash
-python regridding/regrid_sftlf_to_target.py \
+python regrid/regrid_sftlf_to_target.py \
     --source_sftlf /path/to/GFDL-ESM4_sftlf.nc \
     --target_grid /path/to/run_dir/first_regrid_target.nc \
     --output_sftlf /path/to/run_dir/first_sftlf/first_regrid_target_sftlf_GFDL-ESM4.nc
@@ -336,12 +336,12 @@ Run once per model.
 Regrids all files listed in the batch files to the first intermediate grid.
 
 ```bash
-python regridding/run_first_regrid.py \
+python regrid/run_first_regrid.py \
     --batch_dir /path/to/run_dir/batches/first_regrid \
     --target_grid /path/to/run_dir/first_regrid_target.nc \
     --output_dir /path/to/run_dir/first_regrid \
     --interp_method bilinear \
-    --worker_script regridding/regrid.py
+    --worker_script regrid/regrid.py
 ```
 
 For land variables, add `--sftlf_dir /path/to/run_dir/first_sftlf`.
@@ -353,7 +353,7 @@ For land variables, add `--sftlf_dir /path/to/run_dir/first_sftlf`.
 ### Step 5: Create second intermediate target grid
 
 ```bash
-python regridding/make_intermediate_target_grid_file.py \
+python regrid/make_intermediate_target_grid_file.py \
     --src_file /path/to/any_cmip6_file.nc \
     --out_file /path/to/run_dir/second_regrid_target.nc \
     --step 0.25 \
@@ -365,7 +365,7 @@ python regridding/make_intermediate_target_grid_file.py \
 ### Step 6: Regrid land masks to second intermediate grid (land variables only)
 
 ```bash
-python regridding/regrid_sftlf_to_target.py \
+python regrid/regrid_sftlf_to_target.py \
     --source_sftlf /path/to/GFDL-ESM4_sftlf.nc \
     --target_grid /path/to/run_dir/second_regrid_target.nc \
     --output_sftlf /path/to/run_dir/second_sftlf/second_regrid_target_sftlf_GFDL-ESM4.nc
@@ -376,13 +376,13 @@ python regridding/regrid_sftlf_to_target.py \
 ### Step 7: Second regrid (intermediate grid 1 → intermediate grid 2)
 
 ```bash
-python regridding/run_cascade_regrid.py \
+python regrid/run_cascade_regrid.py \
     --input_dir /path/to/run_dir/first_regrid \
     --target_grid /path/to/run_dir/second_regrid_target.nc \
     --output_dir /path/to/run_dir/second_regrid \
     --interp_method bilinear \
     --stage second \
-    --worker_script regridding/regrid.py
+    --worker_script regrid/regrid.py
 ```
 
 ---
@@ -392,7 +392,7 @@ python regridding/run_cascade_regrid.py \
 Extracts the first time slice from a WRF-downscaled ERA5 file to use as the final regridding target.
 
 ```bash
-python regridding/make_final_target_grid_file.py \
+python regrid/make_final_target_grid_file.py \
     /path/to/era5/t2max/t2max_1965_era5_12km_3338.nc \
     /path/to/run_dir/final_regrid_target.nc
 ```
@@ -400,7 +400,7 @@ python regridding/make_final_target_grid_file.py \
 Or use a bundled default:
 
 ```bash
-cp regridding/default_target_grids/era5_12km_default_target_grid.nc \
+cp regrid/default_target_grids/era5_12km_default_target_grid.nc \
    /path/to/run_dir/final_regrid_target.nc
 ```
 
@@ -409,7 +409,7 @@ cp regridding/default_target_grids/era5_12km_default_target_grid.nc \
 ### Step 9: Regrid land masks to final (WRF-downscaled ERA5) grid (land variables only)
 
 ```bash
-python regridding/regrid_sftlf_to_target.py \
+python regrid/regrid_sftlf_to_target.py \
     --source_sftlf /path/to/GFDL-ESM4_sftlf.nc \
     --target_grid /path/to/run_dir/final_regrid_target.nc \
     --output_sftlf /path/to/run_dir/final_sftlf/final_regrid_target_sftlf_GFDL-ESM4.nc
@@ -420,13 +420,13 @@ python regridding/regrid_sftlf_to_target.py \
 ### Step 10: Final regrid (intermediate grid 2 → WRF-downscaled ERA5 grid)
 
 ```bash
-python regridding/run_cascade_regrid.py \
+python regrid/run_cascade_regrid.py \
     --input_dir /path/to/run_dir/second_regrid \
     --target_grid /path/to/run_dir/final_regrid_target.nc \
     --output_dir /path/to/run_dir/final_regrid \
     --interp_method bilinear \
     --stage final \
-    --worker_script regridding/regrid.py
+    --worker_script regrid/regrid.py
 ```
 
 ---
@@ -434,11 +434,11 @@ python regridding/run_cascade_regrid.py \
 ### Step 11: Compute WRF-downscaled ERA5 DTR (only if running `dtr` or `tasmin`)
 
 ```bash
-python derived/run_era5_dtr.py \
+python derive/run_era5_dtr.py \
     --era5_dir /path/to/era5 \
     --output_dir /path/to/era5/dtr \
     --resolution 12 \
-    --worker_script derived/dtr.py
+    --worker_script derive/dtr.py
 ```
 
 ---
@@ -512,7 +512,7 @@ python bias_adjust/run_bias_adjust.py \
 Computes tasmin = adjusted tasmax − adjusted dtr.
 
 ```bash
-python derived/run_difference.py \
+python derive/run_difference.py \
     --input_dir /path/to/run_dir/adjusted \
     --output_dir /path/to/run_dir/adjusted \
     --minuend_template "tasmax_{model}_{scenario}_adjusted.zarr" \
@@ -521,14 +521,16 @@ python derived/run_difference.py \
     --new_var_id tasmin \
     --models "GFDL-ESM4 CESM2" \
     --scenarios "historical ssp370" \
-    --worker_script derived/difference.py
+    --worker_script derive/difference.py
 ```
 
 ---
 
 ## Configuration
 
-Open [config.py](config.py) to adjust the following parameters before running:
+[config.py](config.py) is the **single file to edit** when adapting the pipeline to a new domain or compute environment. All pipeline scripts import from it; no other files need to be changed for the settings below.
+
+### Year ranges
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -536,10 +538,70 @@ Open [config.py](config.py) to adjust the following parameters before running:
 | `ERA5_END_YEAR` | `2014` | Last year of WRF-downscaled ERA5 reference data for training |
 | `FUTURE_START_YEAR` | `2015` | First year of future scenarios |
 | `FUTURE_END_YEAR` | `2100` | Last year of future scenarios |
-| `DOMAIN_4KM` | Arctic 4km bounds | `{min_lon, max_lon, min_lat, max_lat}` |
-| `DOMAIN_12KM` | Arctic 12km bounds | `{min_lon, max_lon, min_lat, max_lat}` |
 
-Variable-to-ERA5 name mappings and adjustment type (additive/multiplicative) are defined in [bias_adjust/luts.py](bias_adjust/luts.py).
+### Domain bounds
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `DOMAIN_4KM` | Arctic 4km bounds | `{min_lon, max_lon, min_lat, max_lat}` (0–360 lon) |
+| `DOMAIN_12KM` | Arctic 12km bounds | `{min_lon, max_lon, min_lat, max_lat}` (0–360 lon) |
+
+### Dask cluster resources
+
+All five worker scripts (`regrid.py`, `train_qm.py`, `bias_adjust.py`, `dtr.py`, `difference.py`) read these values from `config.py`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `DASK_N_WORKERS` | `4` | Number of worker processes |
+| `DASK_THREADS_PER_WORKER` | `4` | Threads per process |
+| `DASK_MEMORY_LIMIT` | `"28GB"` | Memory cap per worker |
+| `DASK_MEMORY_TARGET` | `0.70` | Fraction at which workers start managing memory |
+| `DASK_MEMORY_SPILL` | `0.80` | Fraction at which workers spill to disk |
+| `DASK_MEMORY_PAUSE` | `0.85` | Fraction at which workers pause accepting tasks |
+| `DASK_MEMORY_TERMINATE` | `0.95` | Fraction at which workers are killed |
+| `DASK_ARRAY_CHUNK_SIZE` | `"128 MiB"` | Target size for individual array chunks |
+
+**Total memory used = `DASK_N_WORKERS × DASK_MEMORY_LIMIT`.** With the defaults, the cluster uses ~112 GB. A practical starting point for other machines:
+
+```python
+# For a machine with T GB of RAM and C CPU cores:
+DASK_N_WORKERS = C // 4
+DASK_MEMORY_LIMIT = f"{int(T * 0.8 / n_workers)}GB"  # leave 20% for the OS
+```
+
+Example — **32 GB / 8-core laptop**: `DASK_N_WORKERS = 2`, `DASK_MEMORY_LIMIT = "12GB"` (24 GB total)
+
+Example — **256 GB / 32-core workstation**: `DASK_N_WORKERS = 8`, `DASK_MEMORY_LIMIT = "28GB"` (224 GB total)
+
+> **Note:** `train_qm.py` and `bias_adjust.py` require the entire time dimension to be a single chunk (`time=-1`). This is an xclim requirement for QDM. If you reduce `DASK_MEMORY_LIMIT` significantly, also reduce the spatial chunk sizes (`x`/`y`) in the rechunking calls inside those scripts to keep individual chunks below your worker memory limit.
+
+### QDM training parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `QDM_NQUANTILES` | `100` | Number of quantiles used to build empirical CDFs |
+| `QDM_WINDOW` | `31` | Day-of-year window half-width (31 = ±15 days around each calendar day) |
+
+### Post-adjustment squeeze bounds
+
+After bias adjustment, outputs are clipped to these physically defensible limits. See [Post-adjustment squeezing](#post-adjustment-squeezing-physical-bounds-clipping) for rationale.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `SQUEEZE_TASMAX_MAX` | `333.15` K | Upper ceiling for tasmax (60 °C) |
+| `SQUEEZE_PR_MIN` | `0` mm d⁻¹ | Lower floor for precipitation |
+| `SQUEEZE_PR_MAX` | `1650` mm d⁻¹ | Upper ceiling for precipitation |
+| `SQUEEZE_DTR_LOWER_QUANTILE` | `0.0000002` | Lower tail quantile for DTR squeeze |
+| `SQUEEZE_DTR_UPPER_QUANTILE` | `0.9999998` | Upper tail quantile for DTR squeeze |
+| `SQUEEZE_TASMIN_MIN` | `203.15` K | Lower floor for tasmin (−70 °C) |
+
+### Regridding
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `CASCADE_BATCH_SIZE` | `200` | Files processed per subprocess call in cascade regridding |
+
+Variable-to-ERA5 name mappings and adjustment type (additive/multiplicative) are defined in [config.py](config.py) (`sim_ref_var_lu`, `varid_adj_kind_lu`).
 
 ---
 
@@ -603,49 +665,7 @@ Import the worker functions directly and call them in whatever order suits your 
 
 ## Dask cluster configuration
 
-Each worker script (`regrid.py`, `train_qm.py`, `bias_adjust.py`, `dtr.py`, `difference.py`) starts a `dask.distributed.LocalCluster` internally. The defaults are:
-
-| Parameter | Default | Notes |
-|-----------|---------|-------|
-| `n_workers` | 4 | Number of worker processes |
-| `threads_per_worker` | 4 | Threads per process |
-| `memory_limit` | `"28GB"` | Memory per worker |
-
-**Total memory used = `n_workers × memory_limit`.** With the defaults, the cluster uses ~112 GB. Adjust these to fit your machine.
-
-### Choosing values for your system
-
-A practical starting point:
-
-```python
-# For a machine with T GB of RAM and C CPU cores:
-n_workers = C // 4           # 4 threads per worker is a good default
-memory_limit = f"{int(T * 0.8 / n_workers)}GB"  # leave 20% for the OS
-```
-
-For example, on a **32 GB / 8-core laptop**:
-- `n_workers=2`, `threads_per_worker=4`, `memory_limit="12GB"` (24 GB total)
-
-On a **256 GB / 32-core workstation**:
-- `n_workers=8`, `threads_per_worker=4`, `memory_limit="28GB"` (224 GB total)
-
-### Where to change the defaults
-
-Each `configure_dask_for_*()` function at the top of the worker script has a hardcoded call in `__main__`. Edit those values directly:
-
-```python
-# e.g. in bias_adjust/train_qm.py
-client = configure_dask_for_training(
-    n_workers=2,            # ← change to fit your machine
-    threads_per_worker=4,
-    memory_limit="12GB",    # ← change to fit your machine
-    local_directory=worker_dir,
-)
-```
-
-The same pattern applies to `configure_dask_for_regridding()` in `regridding/regrid.py`, `configure_dask_for_adjustment()` in `bias_adjust/bias_adjust.py`, `configure_dask_for_dtr()` in `derived/dtr.py`, and `configure_dask_for_difference()` in `derived/difference.py`.
-
-> **Note:** `train_qm.py` and `bias_adjust.py` require the entire time dimension to be a single chunk (`time=-1`). This is an xclim requirement for QDM. If you reduce `memory_limit` significantly, also reduce the spatial chunk sizes (`x`/`y`) in the rechunking calls inside those scripts to keep individual chunks below your worker memory limit.
+All Dask settings are centralised in [config.py](config.py). See the [Dask cluster resources](#dask-cluster-resources) table in the Configuration section above for the full parameter list and sizing guidance.
 
 ---
 
@@ -684,7 +704,7 @@ bash test/run_pipeline.sh /path/to/work_dir 12
 - **`dtr`** — Must be derived from tasmax and tasmin before regridding (Step 0). Run both CMIP6 DTR (Step 0) and WRF-downscaled ERA5 DTR (Step 11).
 - **`tasmin`** — Can be processed directly OR derived as tasmax − dtr after bias adjustment (Step 16). The derivation approach is generally preferred.
 - **`snw`** — Uses conservative interpolation (not bilinear). Do not mix `snw` with other variables in the same batch run, as different interpolation methods cannot be combined.
-- **Zero-inflated variables** (`pr`, `dtr`, `snw`) — The QDM applies jitter preprocessing and frequency adaptation automatically (configured in `bias_adjust/luts.py`).
+- **Zero-inflated variables** (`pr`, `dtr`, `snw`) — The QDM applies jitter preprocessing and frequency adaptation automatically (configured in `config.py` via `jitter_under_lu` and `adapt_freq_thresh_lu`).
 
 ### Cascade regridding strategy
 

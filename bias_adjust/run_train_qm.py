@@ -20,8 +20,10 @@ import sys
 from itertools import product
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import cmip6_zarr_tmp_fn, era5_zarr_tmp_fn, trained_qm_tmp_fn
-from luts import sim_ref_var_lu
+from config import sim_ref_var_lu
 
 logging.basicConfig(
     level=logging.INFO,

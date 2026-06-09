@@ -23,15 +23,23 @@ Example usage:
 
 import argparse
 import logging
-from pathlib import Path
+import os
 import sys
-import numpy as np
-import xarray as xr
 import string
 from datetime import datetime
-import os
+from pathlib import Path
+import numpy as np
+import xarray as xr
 import dask
 from dask.distributed import Client, LocalCluster
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import (
+    DASK_N_WORKERS, DASK_THREADS_PER_WORKER, DASK_MEMORY_LIMIT,
+    DASK_MEMORY_TARGET, DASK_MEMORY_SPILL, DASK_MEMORY_PAUSE, DASK_MEMORY_TERMINATE,
+    DASK_ARRAY_CHUNK_SIZE,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,16 +72,16 @@ def configure_dask_for_dtr(n_workers=4, threads_per_worker=4, memory_limit="28GB
     dask.config.set(
         {
             # Memory management
-            "distributed.worker.memory.target": 0.75,
-            "distributed.worker.memory.spill": 0.85,
-            "distributed.worker.memory.pause": 0.90,
-            "distributed.worker.memory.terminate": 0.95,
+            "distributed.worker.memory.target": DASK_MEMORY_TARGET,
+            "distributed.worker.memory.spill": DASK_MEMORY_SPILL,
+            "distributed.worker.memory.pause": DASK_MEMORY_PAUSE,
+            "distributed.worker.memory.terminate": DASK_MEMORY_TERMINATE,
             # I/O optimization for reading many files
             "distributed.comm.timeouts.tcp": "120s",
             "distributed.scheduler.bandwidth": 1e9,
             # Array settings
             "array.slicing.split_large_chunks": True,
-            "array.chunk-size": "128 MiB",
+            "array.chunk-size": DASK_ARRAY_CHUNK_SIZE,
         }
     )
 
@@ -378,7 +386,9 @@ if __name__ == "__main__":
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_dtr(
-            n_workers=4, threads_per_worker=4, memory_limit="28GB"
+            n_workers=DASK_N_WORKERS,
+            threads_per_worker=DASK_THREADS_PER_WORKER,
+            memory_limit=DASK_MEMORY_LIMIT,
         )
 
         # Get file paths

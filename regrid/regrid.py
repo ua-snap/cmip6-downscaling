@@ -23,8 +23,15 @@ from xclim.core import units
 import dask
 from dask.distributed import Client, LocalCluster
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # project
-from config import variables, landsea_variables
+from config import (
+    variables, landsea_variables,
+    DASK_N_WORKERS, DASK_THREADS_PER_WORKER, DASK_MEMORY_LIMIT,
+    DASK_MEMORY_TARGET, DASK_MEMORY_SPILL, DASK_MEMORY_PAUSE, DASK_MEMORY_TERMINATE,
+    DASK_ARRAY_CHUNK_SIZE,
+)
 
 # ignore serializationWarnings from xarray for datasets with multiple FillValues
 warnings.filterwarnings("ignore", category=xr.SerializationWarning)
@@ -160,16 +167,16 @@ def configure_dask_for_regridding(
     dask.config.set(
         {
             # Memory management - regridding can use a lot of memory
-            "distributed.worker.memory.target": 0.70,
-            "distributed.worker.memory.spill": 0.80,
-            "distributed.worker.memory.pause": 0.85,
-            "distributed.worker.memory.terminate": 0.95,
+            "distributed.worker.memory.target": DASK_MEMORY_TARGET,
+            "distributed.worker.memory.spill": DASK_MEMORY_SPILL,
+            "distributed.worker.memory.pause": DASK_MEMORY_PAUSE,
+            "distributed.worker.memory.terminate": DASK_MEMORY_TERMINATE,
             # I/O and network
             "distributed.comm.timeouts.tcp": "120s",
             "distributed.scheduler.bandwidth": 1e9,
             # Array settings for regridding
             "array.slicing.split_large_chunks": True,
-            "array.chunk-size": "128 MiB",
+            "array.chunk-size": DASK_ARRAY_CHUNK_SIZE,
             # Disable work stealing for more predictable memory usage
             "distributed.scheduler.work-stealing": False,
         }
@@ -1446,7 +1453,9 @@ if __name__ == "__main__":
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_regridding(
-            n_workers=4, threads_per_worker=4, memory_limit="28GB"
+            n_workers=DASK_N_WORKERS,
+            threads_per_worker=DASK_THREADS_PER_WORKER,
+            memory_limit=DASK_MEMORY_LIMIT,
         )
 
         # get the paths of files to regrid from the batch file

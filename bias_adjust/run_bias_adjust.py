@@ -20,6 +20,8 @@ import sys
 from itertools import product
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import cmip6_zarr_tmp_fn, trained_qm_tmp_fn, cmip6_adjusted_tmp_fn
 
 logging.basicConfig(

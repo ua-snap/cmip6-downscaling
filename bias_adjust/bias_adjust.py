@@ -12,9 +12,13 @@ import shutil
 import warnings
 import sys
 
+import sys
 # import multiprocessing as mp
 from itertools import product
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import dask
 from dask.distributed import Client, LocalCluster
 import xarray as xr
@@ -23,7 +27,13 @@ import numcodecs
 
 from zarr.sync import ThreadSynchronizer
 
-# from luts import jitter_under_lu
+from config import (
+    DASK_N_WORKERS, DASK_THREADS_PER_WORKER, DASK_MEMORY_LIMIT,
+    DASK_MEMORY_TARGET, DASK_MEMORY_SPILL, DASK_MEMORY_PAUSE, DASK_MEMORY_TERMINATE,
+    DASK_ARRAY_CHUNK_SIZE,
+    SQUEEZE_TASMAX_MAX, SQUEEZE_PR_MIN, SQUEEZE_PR_MAX,
+    SQUEEZE_DTR_LOWER_QUANTILE, SQUEEZE_DTR_UPPER_QUANTILE,
+)
 from train_qm import get_var_id
 
 logging.basicConfig(
@@ -64,16 +74,16 @@ def configure_dask_for_adjustment(
     dask.config.set(
         {
             # Memory management - more conservative thresholds to avoid OOM
-            "distributed.worker.memory.target": 0.70,  # Start managing at 70%
-            "distributed.worker.memory.spill": 0.80,  # Spill to disk at 80%
-            "distributed.worker.memory.pause": 0.85,  # Pause at 85%
-            "distributed.worker.memory.terminate": 0.95,
+            "distributed.worker.memory.target": DASK_MEMORY_TARGET,
+            "distributed.worker.memory.spill": DASK_MEMORY_SPILL,
+            "distributed.worker.memory.pause": DASK_MEMORY_PAUSE,
+            "distributed.worker.memory.terminate": DASK_MEMORY_TERMINATE,
             # I/O optimization
             "distributed.comm.timeouts.tcp": "120s",
             "distributed.scheduler.bandwidth": 1e9,
             # Array settings
             "array.slicing.split_large_chunks": True,
-            "array.chunk-size": "128 MiB",
+            "array.chunk-size": DASK_ARRAY_CHUNK_SIZE,
             # Determinism - disable work stealing for reproducible results
             "distributed.scheduler.work-stealing": False,
         }
@@ -418,9 +428,9 @@ if __name__ == "__main__":
         # Configure Dask
         logging.info("Configuring Dask cluster...")
         client = configure_dask_for_adjustment(
-            n_workers=4,
-            threads_per_worker=4,
-            memory_limit="28GB",
+            n_workers=DASK_N_WORKERS,
+            threads_per_worker=DASK_THREADS_PER_WORKER,
+            memory_limit=DASK_MEMORY_LIMIT,
             worker_dir=worker_base_dir,
         )
 
@@ -559,8 +569,8 @@ if __name__ == "__main__":
             cdf = cumsum / total_count
 
             # Find quantile values from CDF
-            lower_quantile = 0.0000002
-            upper_quantile = 0.9999998
+            lower_quantile = SQUEEZE_DTR_LOWER_QUANTILE
+            upper_quantile = SQUEEZE_DTR_UPPER_QUANTILE
 
             lower_idx = np.searchsorted(cdf, lower_quantile)
             upper_idx = np.searchsorted(cdf, upper_quantile)
@@ -611,9 +621,9 @@ if __name__ == "__main__":
             logging.info(f"Set values above {upper_thresh:.2f} to {upper_thresh:.2f}")
             logging.info("##### FINISH SQUEEZING DTR #####")
 
-        max_tasmax = 333.15
-        max_pr = 1650
-        min_pr = 0
+        max_tasmax = SQUEEZE_TASMAX_MAX
+        max_pr = SQUEEZE_PR_MAX
+        min_pr = SQUEEZE_PR_MIN
 
         # tasmin is squeezed separately in the derived/difference.py script
         var_ds = scen_ds[var_id]

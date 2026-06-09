@@ -24,9 +24,9 @@ CMIP6_DIR="$TEST_DATA/cmip6"
 ERA5_DIR="$TEST_DATA/wrf_era5"
 SFTLF_DIR="$TEST_DATA/cmip6/sftlf"
 
-REGRIDDING="$REPO_ROOT/regridding"
+REGRIDDING="$REPO_ROOT/regrid"
 BIAS_ADJUST="$REPO_ROOT/bias_adjust"
-DERIVED="$REPO_ROOT/derived"
+DERIVED="$REPO_ROOT/derive"
 
 # Pipeline parameters
 MODEL="MIROC6"

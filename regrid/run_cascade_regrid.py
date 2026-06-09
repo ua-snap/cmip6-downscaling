@@ -23,13 +23,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import CASCADE_BATCH_SIZE
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-BATCH_SIZE = 200
 
 
 def write_batch_files(src_fps, batch_dir):
@@ -44,8 +46,8 @@ def write_batch_files(src_fps, batch_dir):
     batch_num = 1
     for model, model_files in sorted(files_by_model.items()):
         logging.info(f"  Model {model}: {len(model_files)} files")
-        for i in range(0, len(model_files), BATCH_SIZE):
-            chunk = model_files[i : i + BATCH_SIZE]
+        for i in range(0, len(model_files), CASCADE_BATCH_SIZE):
+            chunk = model_files[i : i + CASCADE_BATCH_SIZE]
             batch_file = batch_dir / f"batch_{batch_num}_{model}.txt"
             with open(batch_file, "w") as f:
                 for fp in chunk:

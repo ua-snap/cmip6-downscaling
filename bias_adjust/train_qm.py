@@ -18,6 +18,8 @@ import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # import icclim
 import dask
 import dask.array as da
@@ -26,7 +28,13 @@ import xarray as xr
 from zarr.sync import ThreadSynchronizer
 import numcodecs
 from xclim import sdba
-from luts import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu, adapt_freq_thresh_lu
+from config import (
+    DASK_N_WORKERS, DASK_THREADS_PER_WORKER, DASK_MEMORY_LIMIT,
+    DASK_MEMORY_TARGET, DASK_MEMORY_SPILL, DASK_MEMORY_PAUSE, DASK_MEMORY_TERMINATE,
+    DASK_ARRAY_CHUNK_SIZE,
+    QDM_NQUANTILES, QDM_WINDOW,
+)
+from config import sim_ref_var_lu, varid_adj_kind_lu, jitter_under_lu, adapt_freq_thresh_lu
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,16 +65,16 @@ def configure_dask_for_training(n_workers=4, threads_per_worker=4, memory_limit=
     dask.config.set(
         {
             # Memory management - more aggressive for large climate data
-            "distributed.worker.memory.target": 0.70,  # Start spilling at 70%
-            "distributed.worker.memory.spill": 0.80,  # Agressively spill at 80%
-            "distributed.worker.memory.pause": 0.85,  # Pause at 85%
-            "distributed.worker.memory.terminate": 0.95,  # Kill worker at 95%
+            "distributed.worker.memory.target": DASK_MEMORY_TARGET,
+            "distributed.worker.memory.spill": DASK_MEMORY_SPILL,
+            "distributed.worker.memory.pause": DASK_MEMORY_PAUSE,
+            "distributed.worker.memory.terminate": DASK_MEMORY_TERMINATE,
             # Optimize for I/O with zarr
             "distributed.comm.timeouts.tcp": "120s",
-            "distributed.scheduler.bandwidth": 1e9,  # Assume 1 Gbps network
+            "distributed.scheduler.bandwidth": 1e9,
             # Array optimization
             "array.slicing.split_large_chunks": True,
-            "array.chunk-size": "128 MiB",  # Target chunk size
+            "array.chunk-size": DASK_ARRAY_CHUNK_SIZE,
             # Disable work stealing for deterministic results
             "distributed.scheduler.work-stealing": False,
         }
@@ -545,9 +553,9 @@ if __name__ == "__main__":
         worker_dir = tmp_path / f"train-{sim_path.stem}-{os.getpid()}"
         worker_dir.mkdir(parents=True, exist_ok=True)
         client = configure_dask_for_training(
-            n_workers=4,
-            threads_per_worker=4,
-            memory_limit="28GB",  # 4 workers × 28GB = 112GB, leaving 16GB for system
+            n_workers=DASK_N_WORKERS,
+            threads_per_worker=DASK_THREADS_PER_WORKER,
+            memory_limit=DASK_MEMORY_LIMIT,
             local_directory=worker_dir,
         )
 
@@ -621,9 +629,9 @@ if __name__ == "__main__":
         train_kwargs = dict(
             ref=ref,
             hist=hist,
-            nquantiles=100,
+            nquantiles=QDM_NQUANTILES,
             group="time.dayofyear",
-            window=31,
+            window=QDM_WINDOW,
             kind=varid_adj_kind_lu[var_id],
         )
         if var_id in adapt_freq_thresh_lu:

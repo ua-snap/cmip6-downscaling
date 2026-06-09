@@ -18,6 +18,8 @@ import sys
 from itertools import product
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import dtr_tmp_fn, dtr_tmp_dir_structure
 
 logging.basicConfig(
