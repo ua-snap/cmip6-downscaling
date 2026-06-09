@@ -110,6 +110,10 @@ SQUEEZE_DTR_UPPER_QUANTILE = 0.9999998
 # tasmin: lower floor of −70 °C (203.15 K) — the lowest recorded surface temperature
 SQUEEZE_TASMIN_MIN = 203.15  # K
 
+# hurs / hursmin: relative humidity is physically bounded [0, 100] %
+SQUEEZE_HURS_MIN = 0    # %
+SQUEEZE_HURS_MAX = 100  # %
+
 # ---------------------------------------------------------------------------
 # Regridding — configuration
 # ---------------------------------------------------------------------------

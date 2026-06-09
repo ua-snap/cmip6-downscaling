@@ -33,6 +33,7 @@ from config import (
     DASK_ARRAY_CHUNK_SIZE,
     SQUEEZE_TASMAX_MAX, SQUEEZE_PR_MIN, SQUEEZE_PR_MAX,
     SQUEEZE_DTR_LOWER_QUANTILE, SQUEEZE_DTR_UPPER_QUANTILE,
+    SQUEEZE_HURS_MIN, SQUEEZE_HURS_MAX,
 )
 from train_qm import get_var_id
 
@@ -644,6 +645,14 @@ if __name__ == "__main__":
             logging.info(f"Count of values below {min_pr} mm/day: {count_below_zero}")
             var_ds = var_ds.where((var_ds <= max_pr) | var_ds.isnull(), max_pr)
             var_ds = var_ds.where((var_ds >= min_pr) | var_ds.isnull(), min_pr)
+        elif var_id in ("hurs", "hursmin"):
+            logging.info("Squeezing hurs/hursmin values to valid range")
+            count_below_zero = (var_ds < SQUEEZE_HURS_MIN).sum().compute().item()
+            count_above_max = (var_ds > SQUEEZE_HURS_MAX).sum().compute().item()
+            logging.info(f"Count of values below {SQUEEZE_HURS_MIN} %: {count_below_zero}")
+            logging.info(f"Count of values above {SQUEEZE_HURS_MAX} %: {count_above_max}")
+            var_ds = var_ds.where((var_ds >= SQUEEZE_HURS_MIN) | var_ds.isnull(), SQUEEZE_HURS_MIN)
+            var_ds = var_ds.where((var_ds <= SQUEEZE_HURS_MAX) | var_ds.isnull(), SQUEEZE_HURS_MAX)
         scen_ds[var_id] = var_ds
 
         logging.info(f"Writing adjusted data to {adj_path}")

@@ -13,7 +13,7 @@ The test data covers the **Seward Peninsula, Alaska** — a small geographic reg
 | **WRF-downscaled ERA5 clip** | 62×70 grid cells at 12 km (EPSG:3338) |
 | **Model** | MIROC6 |
 | **Scenarios** | historical (2000–2009), ssp370 (2045–2054) |
-| **Variables** | `pr`, `snw`, `tasmax`, `tasmin` (→ `dtr`) |
+| **Variables** | `pr`, `snw`, `tasmax`, `tasmin` (→ `dtr`), `hurs`, `hursmin`, `sfcWind` |
 
 `pr` is an atmosphere variable present on all grid cells. `snw` is a land-only variable — its
 CMIP6 output is masked to land cells using the `sftlf` (land area fraction) file. Including `snw`
@@ -47,12 +47,18 @@ test/data/
 │   │   ├── pr/gn/v20191016/pr_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
 │   │   ├── snw/gn/v20191016/snw_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
 │   │   ├── tasmax/gn/v20191016/tasmax_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
-│   │   └── tasmin/gn/v20191016/tasmin_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   ├── tasmin/gn/v20191016/tasmin_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   ├── hurs/gn/v20191016/hurs_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   ├── hursmin/gn/v20191016/hursmin_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
+│   │   └── sfcWind/gn/v20200804/sfcWind_day_MIROC6_historical_r1i1p1f1_gn_20000101-20091231.nc
 │   ├── ScenarioMIP/MIROC/MIROC6/ssp370/r1i1p1f1/day/
 │   │   ├── pr/gn/v20191016/pr_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
 │   │   ├── snw/gn/v20191016/snw_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
 │   │   ├── tasmax/gn/v20191016/tasmax_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
-│   │   └── tasmin/gn/v20191016/tasmin_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   ├── tasmin/gn/v20191016/tasmin_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   ├── hurs/gn/v20191016/hurs_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   ├── hursmin/gn/v20191016/hursmin_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
+│   │   └── sfcWind/gn/v20200323/sfcWind_day_MIROC6_ssp370_r1i1p1f1_gn_20450101-20541231.nc
 │   └── sftlf/
 │       └── sftlf_fx_MIROC6_historical_r1i1p1f1_gn.nc
 └── wrf_era5/
@@ -62,8 +68,14 @@ test/data/
     │   └── snow_mean_{2000..2009}_daily_era5_12km_3338.nc
     ├── t2max/
     │   └── t2max_{2000..2009}_daily_era5_12km_3338.nc
-    └── t2min/
-        └── t2min_{2000..2009}_daily_era5_12km_3338.nc
+    ├── t2min/
+    │   └── t2min_{2000..2009}_daily_era5_12km_3338.nc
+    ├── rh2_mean/
+    │   └── rh2_mean_{2000..2009}_daily_era5_12km_3338.nc
+    ├── rh2_min/
+    │   └── rh2_min_{2000..2009}_daily_era5_12km_3338.nc
+    └── wspd10_mean/
+        └── wspd10_mean_{2000..2009}_daily_era5_12km_3338.nc
 ```
 
 CMIP6 training period: 2000–2009 (historical). Future scenario: ssp370 2045–2054.
@@ -170,5 +182,6 @@ WRF-downscaled ERA5 variable names (WRF-downscaled ERA5 ID → CMIP6 variable):
 - `pr` → `pr`
 - `snow_mean` → `snw`
 - `rh2_mean` → `hurs`
+- `rh2_min` → `hursmin`
 - `wspd10_mean` → `sfcWind`
 - `dtr` → `dtr` (derived, not a raw WRF-downscaled ERA5 variable)

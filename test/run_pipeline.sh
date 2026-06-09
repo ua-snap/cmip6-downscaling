@@ -35,15 +35,15 @@ SCENARIOS="historical ssp370"
 # REGRID_VARS: everything that needs to go through the cascade regridder.
 # tasmin is included so DTR = tasmax - tasmin can be computed after regridding
 # (step 7), but tasmin is NOT bias-adjusted directly.
-REGRID_VARS="pr snw tasmax tasmin"
+REGRID_VARS="pr snw tasmax tasmin hurs hursmin sfcWind"
 
 # ADJUST_VARS: variables that get zarr-converted, QDM-trained, and bias-adjusted.
 # tasmin is excluded — it is derived as adjusted_tasmax - adjusted_dtr (step 13).
-ADJUST_VARS="pr snw tasmax dtr"
+ADJUST_VARS="pr snw tasmax dtr hurs hursmin sfcWind"
 
 # ERA5_BASE_VARS: ERA5 variables in test/data/wrf_era5/ to zarr-convert.
 # ERA5 dtr is computed by step 8 and zarr-converted separately in step 10b.
-ERA5_BASE_VARS="pr snow_mean t2max"
+ERA5_BASE_VARS="pr snow_mean t2max rh2_mean rh2_min wspd10_mean"
 
 # Year ranges — test data covers 2000-2009 (ERA5/historical) and 2045-2054 (ssp370)
 # Production defaults are ERA5 1965-2014, future 2015-2100
