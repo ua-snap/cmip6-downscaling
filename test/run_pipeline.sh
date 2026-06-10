@@ -63,7 +63,7 @@ echo "========================================"
 
 # ── Step 1: Create intermediate target grid ────────────────────────────────
 echo "[1/13] Creating intermediate target grid..."
-FIRST_CMIP6_FILE=$(find "$CMIP6_DIR" -name "*.nc" | head -1)
+FIRST_CMIP6_FILE=$(find "$CMIP6_DIR" -name "*.nc" -print -quit)
 python "$REGRIDDING/make_intermediate_target_grid_file.py" \
     --src_file "$FIRST_CMIP6_FILE" \
     --out_file "$WORK_DIR/intermediate_target.nc" \
@@ -72,7 +72,7 @@ python "$REGRIDDING/make_intermediate_target_grid_file.py" \
 
 # ── Step 2: Regrid sftlf to intermediate grid ──────────────────────────────
 echo "[2/13] Regridding sftlf to intermediate grid..."
-SRC_SFTLF=$(find "$SFTLF_DIR" -name "sftlf_fx_MIROC6*.nc" | head -1)
+SRC_SFTLF=$(find "$SFTLF_DIR" -name "sftlf_fx_MIROC6*.nc" -print -quit)
 python "$REGRIDDING/regrid_sftlf_to_target.py" \
     --source_sftlf "$SRC_SFTLF" \
     --target_grid "$WORK_DIR/intermediate_target.nc" \
@@ -101,7 +101,7 @@ python "$REGRIDDING/run_first_regrid.py" \
 
 # ── Step 5: Make final target grid from ERA5 ──────────────────────────────
 echo "[5/13] Creating final target grid from ERA5..."
-FIRST_ERA5_FILE=$(find "$ERA5_DIR" -name "*.nc" | head -1)
+FIRST_ERA5_FILE=$(find "$ERA5_DIR" -name "*.nc" -print -quit)
 python "$REGRIDDING/make_final_target_grid_file.py" \
     "$FIRST_ERA5_FILE" \
     "$WORK_DIR/final_target.nc"
