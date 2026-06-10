@@ -715,3 +715,6 @@ Three-step regridding minimizes interpolation error when native CMIP6 grids are 
 3. **Final** — WRF-downscaled ERA5 target resolution (~4km or ~12km)
 
 Land/sea masking is applied at every regridding stage using model-specific `sftlf` files regridded to each intermediate grid resolution.
+
+### Contact
+For more information, contact uaf-snap-data-tools@alaska.edu.
