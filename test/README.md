@@ -4,7 +4,7 @@ This directory contains a minimal end-to-end test for the downscaling pipeline.
 
 ## Test domain
 
-The test data covers the **Seward Peninsula, Alaska** — a small geographic region chosen to keep file sizes manageable while exercising the full pipeline.
+The test data covers the **Seward Peninsula, Alaska**, a small geographic region chosen to keep file sizes manageable while exercising the full pipeline.
 
 | | Detail |
 |---|---|
@@ -15,28 +15,16 @@ The test data covers the **Seward Peninsula, Alaska** — a small geographic reg
 | **Scenarios** | historical (2000–2009), ssp370 (2045–2054) |
 | **Variables** | `pr`, `snw`, `tasmax`, `tasmin` (→ `dtr`), `hurs`, `hursmin`, `sfcWind` |
 
-`pr` is an atmosphere variable present on all grid cells. `snw` is a land-only variable — its
+`pr`, `hurs`, `hursmin`, and `sfcWind` are atmospheric variables present on all grid cells. `snw` is a land-only variable: its
 CMIP6 output is masked to land cells using the `sftlf` (land area fraction) file. Including `snw`
 in the test exercises the land-masking code path that requires `sftlf`. Any land-only variable
 (e.g., `mrso`, `mrros`) follows the same path.
 
-`tasmax` and `tasmin` exercise the DTR derivation path: DTR = tasmax − tasmin is computed after
-regridding (step 7), WRF-downscaled ERA5 DTR is computed from t2max/t2min (step 8), and bias-adjusted `tasmin`
-is re-derived as adjusted tasmax − adjusted dtr (step 13).
+`tasmax` and `tasmin` exercise the DTR derivation path: `dtr = tasmax − tasmin`. It is computed after
+regridding CMIP6, while WRF-downscaled ERA5 `dtr` is computed from `t2max` and `t2min` in the same way. Bias-adjusted `tasmin`
+is re-derived as `adjusted tasmax − adjusted dtr`.
 
 This is not a scientifically meaningful domain — it is purely a functional test to verify that each pipeline step runs without error and produces non-empty output.
-
-### Known artifact: snw extreme values after bias adjustment
-
-QDM bias adjustment can produce physically implausible values in the upper tail of `snw` when the
-historical CMIP6 distribution has no analog for the highest WRF-downscaled ERA5 quantiles and the adjustment
-factor extrapolates beyond the training range. In the test run, a small number of `snw` cells
-exceed 50,000 kg m⁻² (well above the WRF-downscaled ERA5 maximum of ~10,000 kg m⁻²).
-
-This is a known limitation of quantile mapping at the distribution tails and is not specific to
-this pipeline. **Post-processing is required**: clip `snw` (and any variable prone to tail
-extrapolation) to a physically defensible upper bound before scientific use. A reasonable approach
-is to cap values at a fixed multiple of the 99.9th percentile of the reference (WRF-downscaled ERA5) distribution.
 
 ## Test data layout
 
@@ -78,7 +66,7 @@ test/data/
         └── wspd10_mean_{2000..2009}_daily_era5_12km_3338.nc
 ```
 
-CMIP6 training period: 2000–2009 (historical). Future scenario: ssp370 2045–2054.
+CMIP6 training period: historical 2000–2009. Future scenario: ssp370 2045–2054.
 
 **Note:** The `wrf_era5` files are WRF-downscaled ERA5 at 12 km resolution (EPSG:3338),
 not raw ERA5. They are clipped to the Seward Peninsula, Alaska test domain.
@@ -95,6 +83,10 @@ unzip data_seward_peninsula_test.zip
 This produces the `test/data/` directory with the layout shown above.
 Do not commit `test/data/` to the repo — it is covered by `.gitignore`.
 
+## Configure the pipeline
+
+Read the `config.py` to see your options for configuring the pipeline. Pay special attention to the dask configuration to avoid running out of memory.
+
 ## Running the full pipeline on test data
 
 ```bash
@@ -110,8 +102,7 @@ Arguments:
 
 The test uses a **2-stage cascade regrid** (native CMIP6 → one intermediate grid → ERA5 target).
 The full production pipeline described in the main README uses a 3-stage cascade (one additional
-intermediate step) to better handle the larger grid-spacing differences at full Arctic domain
-extents. The scripts support both — `run_cascade_regrid.py` can be called twice for 3 stages.
+intermediate step). The scripts support both — `run_cascade_regrid.py` can be called twice for 3 stages.
 
 | Step | Script | Description |
 |------|--------|-------------|
@@ -167,21 +158,3 @@ This produces one PNG per variable in `{work_dir}/qc/` (e.g. `qc/pr.png`, `qc/sn
 | Future delta sanity | ssp370 − historical mean change within plausible bounds |
 
 The script exits with status 0 if all checks pass, 1 otherwise.
-
-## WRF-downscaled ERA5 file format
-
-WRF-downscaled ERA5 files must have the following structure expected by `netcdf_to_zarr.py`:
-- Time dimension with daily values
-- Variable named matching the ERA5 variable ID (e.g., `t2max`)
-- Projected coordinates (x/y) in EPSG:3338 with a `spatial_ref` coordinate,
-  **or** geographic coordinates (lat/lon)
-
-WRF-downscaled ERA5 variable names (WRF-downscaled ERA5 ID → CMIP6 variable):
-- `t2max` → `tasmax`
-- `t2min` → `tasmin`
-- `pr` → `pr`
-- `snow_mean` → `snw`
-- `rh2_mean` → `hurs`
-- `rh2_min` → `hursmin`
-- `wspd10_mean` → `sfcWind`
-- `dtr` → `dtr` (derived, not a raw WRF-downscaled ERA5 variable)
