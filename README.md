@@ -200,12 +200,18 @@ working examples of all required naming and format conventions):
 |----------------|---------------------|-------|
 | `tasmax` | `t2max` | Temperature in Kelvin |
 | `tasmin` | `t2min` | Temperature in Kelvin |
-| `dtr` | `dtr` | Computed from t2max − t2min |
+| `dtr` | `dtr` | Derived during processing from t2max − t2min (not a WRF-downscaled ERA5 variable) |
 | `pr` | `pr` | Precipitation |
 | `hurs` | `rh2_mean` | Relative humidity |
 | `hursmin` | `rh2_min` | Daily minimum relative humidity |
 | `snw` | `snow_mean` | Snow amount |
 | `sfcWind` | `wspd10_mean` | Wind speed |
+
+WRF-downscaled ERA5 files must have the following structure expected by `netcdf_to_zarr.py`:
+- Time dimension with daily values
+- Variable named matching the ERA5 variable ID (e.g., `t2max`)
+- Projected coordinates (x/y) in EPSG:3338 with a `spatial_ref` coordinate,
+  **or** geographic coordinates (lat/lon)
 
 See the [test suite](test/README.md) for concrete file format examples.
 
