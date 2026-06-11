@@ -24,7 +24,7 @@ dependencies:
   - esmf=*=nompi*
   - esmpy=*=nompi*
   - importlib_metadata<5
-  - xclim=0.47.0
+  - xclim=0.48.0
   - xesmf=0.8.4
   - pint
   - sparse
