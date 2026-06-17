@@ -89,9 +89,9 @@ cd test
 unzip data_seward_peninsula_test.zip
 cd ..
 
-# 3. Create the conda environment (libmamba solver required)
-conda env create -f environment.yml --solver=libmamba
-conda activate cmip6-downscaling
+# 3. Create the micromamba environment
+micromamba env create -f environment.yml
+micromamba activate cmip6-downscaling
 
 # 4. Run the test pipeline
 bash test/run_pipeline.sh /path/to/work_dir 12
@@ -134,11 +134,9 @@ The pipeline performs five major operations, each composed of one or more script
 ### Python environment
 
 ```bash
-conda env create -f environment.yml --solver=libmamba
-conda activate cmip6-downscaling
+micromamba env create -f environment.yml
+micromamba activate cmip6-downscaling
 ```
-
-> **Note:** `--solver=libmamba` is required — the default conda solver hangs on this dependency set. If you don't have it, install it first: `conda install -n base conda-libmamba-solver`
 
 See [environment.yml](environment.yml) for the full package list. Key packages:
 - `xarray`, `xesmf`, `xclim`, `esmf`, `cf_xarray`, `dask`, `zarr`, `netcdf4`, `h5netcdf`
@@ -224,7 +222,7 @@ The cascade regridding requires a target grid file at each stage. Both are gener
 
 ## Pipeline Steps
 
-Run all scripts with `conda activate cmip6-downscaling` active. Each step below is a Python script that can be called directly.
+Run all scripts with `micromamba activate cmip6-downscaling` active. Each step below is a Python script that can be called directly.
 
 > **Note on parallelization**: All launcher scripts (`run_*.py`) execute jobs sequentially. If you want to speed things up, see the [Parallelization](#parallelization) section.
 
