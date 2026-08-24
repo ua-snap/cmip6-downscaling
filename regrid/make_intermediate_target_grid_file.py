@@ -129,7 +129,14 @@ def create_intermediate_target_grid(
     assert (
         ds.lon.values[0] < ds.lon.values[-1]
     ), "Longitude values are not in increasing order"
-    mid_res_ds = ds.isel(time=0, drop=True).interp(
+
+    # Check if the time dimension exists
+    if "time" in ds.dims:
+        ds_time_slice = ds.isel(time=0, drop=True)
+    else:
+        ds_time_slice = ds
+
+    mid_res_ds = ds_time_slice.interp(
         lat=new_lat, lon=new_lon, method="linear"
     )
     del mid_res_ds.encoding["unlimited_dims"]

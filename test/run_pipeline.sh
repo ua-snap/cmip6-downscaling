@@ -52,6 +52,12 @@ ERA5_END_YEAR=2009
 FUTURE_START_YEAR=2045
 FUTURE_END_YEAR=2054
 
+if [[ "$REGRID_VARS" == *"tasmin"* ]]; then
+    DOWNSCALE_TASMIN="true"
+else
+    DOWNSCALE_TASMIN="false"
+fi
+
 mkdir -p "$WORK_DIR"
 
 echo "========================================"
@@ -128,21 +134,29 @@ python "$REGRIDDING/run_cascade_regrid.py" \
 # Input: regridded tasmax + tasmin in second_regrid. Output written to
 # second_regrid/{model}/{scenario}/day/dtr/ alongside the other regridded vars.
 echo "[7/13] Computing CMIP6 DTR..."
-python "$DERIVED/run_cmip6_dtr.py" \
-    --input_dir "$WORK_DIR/second_regrid" \
-    --output_dir "$WORK_DIR/second_regrid" \
-    --models "$MODEL" \
-    --scenarios "$SCENARIOS"
+if [[ "$DOWNSCALE_TASMIN" == "false" ]]; then
+    echo "Skipping DTR computation since tasmin was not included in vars."
+else
+    python "$DERIVED/run_cmip6_dtr.py" \
+        --input_dir "$WORK_DIR/second_regrid" \
+        --output_dir "$WORK_DIR/second_regrid" \
+        --models "$MODEL" \
+        --scenarios "$SCENARIOS"
+fi
 
 # ── Step 8: Compute ERA5 DTR ───────────────────────────────────────────────
 # Output goes to era5_dtr/dtr/ so that run_era5_netcdf_to_zarr.py can find
 # files at the expected path: <netcdf_dir>/<var_id>/<var_id>_<year>*.nc
 echo "[8/13] Computing ERA5 DTR..."
-mkdir -p "$WORK_DIR/era5_dtr/dtr"
-python "$DERIVED/run_era5_dtr.py" \
-    --era5_dir "$ERA5_DIR" \
-    --output_dir "$WORK_DIR/era5_dtr/dtr" \
-    --resolution "$RESOLUTION"
+if [[ "$DOWNSCALE_TASMIN" == "false" ]]; then
+    echo "Skipping DTR computation since tasmin was not included in vars."
+else
+    mkdir -p "$WORK_DIR/era5_dtr/dtr"
+    python "$DERIVED/run_era5_dtr.py" \
+        --era5_dir "$ERA5_DIR" \
+        --output_dir "$WORK_DIR/era5_dtr/dtr" \
+        --resolution "$RESOLUTION"
+fi
 
 # ── Step 9: Convert regridded CMIP6 → Zarr ────────────────────────────────
 echo "[9/13] Converting regridded CMIP6 NetCDF → Zarr..."
@@ -171,13 +185,17 @@ python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
 
 # ── Step 10b: Convert ERA5 DTR → Zarr ─────────────────────────────────────
 echo "[10b/13] Converting ERA5 DTR → Zarr..."
-python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
-    --netcdf_dir "$WORK_DIR/era5_dtr" \
-    --output_dir "$WORK_DIR/era5_zarr" \
-    --variables "dtr" \
-    --resolution "$RESOLUTION" \
-    --start_year "$ERA5_START_YEAR" \
-    --end_year "$ERA5_END_YEAR"
+if [[ "$DOWNSCALE_TASMIN" == "false" ]]; then
+    echo "Skipping DTR conversion since tasmin was not included in vars."
+else
+    python "$BIAS_ADJUST/run_era5_netcdf_to_zarr.py" \
+        --netcdf_dir "$WORK_DIR/era5_dtr" \
+        --output_dir "$WORK_DIR/era5_zarr" \
+        --variables "dtr" \
+        --resolution "$RESOLUTION" \
+        --start_year "$ERA5_START_YEAR" \
+        --end_year "$ERA5_END_YEAR"
+fi
 
 # ── Step 11: Train QDM ────────────────────────────────────────────────────
 echo "[11/13] Training QDM bias adjustment models..."
@@ -204,15 +222,19 @@ python "$BIAS_ADJUST/run_bias_adjust.py" \
 
 # ── Step 13: Derive tasmin = adjusted tasmax − adjusted dtr ───────────────
 echo "[13/13] Deriving tasmin from adjusted tasmax − dtr..."
-python "$DERIVED/run_difference.py" \
-    --input_dir "$WORK_DIR/adjusted" \
-    --output_dir "$WORK_DIR/adjusted" \
-    --minuend_tmp_fn "tasmax_{model}_{scenario}_adjusted.zarr" \
-    --subtrahend_tmp_fn "dtr_{model}_{scenario}_adjusted.zarr" \
-    --out_tmp_fn "tasmin_{model}_{scenario}_adjusted.zarr" \
-    --new_var_id tasmin \
-    --models "$MODEL" \
-    --scenarios "$SCENARIOS"
+if [[ "$DOWNSCALE_TASMIN" == "false" ]]; then
+    echo "Skipping tasmin derivation since tasmin was not included in vars."
+else
+    python "$DERIVED/run_difference.py" \
+        --input_dir "$WORK_DIR/adjusted" \
+        --output_dir "$WORK_DIR/adjusted" \
+        --minuend_tmp_fn "tasmax_{model}_{scenario}_adjusted.zarr" \
+        --subtrahend_tmp_fn "dtr_{model}_{scenario}_adjusted.zarr" \
+        --out_tmp_fn "tasmin_{model}_{scenario}_adjusted.zarr" \
+        --new_var_id tasmin \
+        --models "$MODEL" \
+        --scenarios "$SCENARIOS"
+fi
 
 echo ""
 echo "========================================"
